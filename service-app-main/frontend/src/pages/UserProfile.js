@@ -53,6 +53,34 @@ const UserProfile = () => {
     return () => { active = false; };
   }, [navigate]);
 
+  useEffect(() => {
+    const refetch = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supaUser = session?.user;
+      if (!supaUser) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone, role, avatar_url')
+        .eq('id', supaUser.id)
+        .maybeSingle();
+      setUser((prev) => prev ? ({
+        ...prev,
+        fullName: profile?.full_name || prev.fullName,
+        phone: profile?.phone || '',
+        role: profile?.role || prev.role,
+        avatarUrl: profile?.avatar_url || '',
+      }) : prev);
+    };
+    const onFocus = () => { refetch(); };
+    const onProfileUpdated = () => { refetch(); };
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('profile-updated', onProfileUpdated);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('profile-updated', onProfileUpdated);
+    };
+  }, []);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -207,6 +235,13 @@ const UserProfile = () => {
                   <div>
                     <p className="text-sm text-slate-600 dark:text-slate-400">Phone</p>
                     <p className="font-semibold">{user.phone || 'Not provided'}</p>
+                    {!user.phone && (
+                      <div className="mt-2">
+                        <Button size="sm" onClick={() => navigate('/verify-otp')}>
+                          Verify Number
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 

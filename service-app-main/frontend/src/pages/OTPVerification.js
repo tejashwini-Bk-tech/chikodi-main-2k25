@@ -8,6 +8,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { toast } from '../hooks/use-toast';
 import axios from 'axios';
+import { supabase } from '../lib/supabaseClient';
 
 const OTPVerification = () => {
   const { t } = useLanguage();
@@ -85,7 +86,23 @@ const OTPVerification = () => {
           if (response?.data?.verified) {
             toast({ title: 'Verification Successful!', description: 'Your phone number has been verified' });
             localStorage.setItem('isVerified', 'true');
-            // Store verified phone to update profile after login
+            // If a session exists, update the profile immediately
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const uid = sessionData?.session?.user?.id;
+              if (uid) {
+                const { error } = await supabase
+                  .from('profiles')
+                  .update({ phone: contact })
+                  .eq('id', uid);
+                if (error) throw error;
+                toast({ title: 'Profile Updated', description: 'Phone number saved to your profile' });
+                // Go back to where the user came from (e.g., User Profile)
+                setTimeout(() => navigate(-1), 500);
+                return;
+              }
+            } catch {}
+            // Fallback: store to apply on next login
             localStorage.setItem('verifiedPhone', contact);
             setTimeout(() => navigate('/login'), 500);
           } else {

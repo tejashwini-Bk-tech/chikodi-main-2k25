@@ -19,6 +19,7 @@ import UserProfile from './pages/UserProfile';
 import Payments from './pages/Payments';
 import Dashboard from './pages/Dashboard';
 import AuthCallback from './pages/AuthCallback';
+import ResetPassword from './pages/ResetPassword';
 
 const RequireAuth = ({ children }) => {
   const isLoggedIn = !!localStorage.getItem('user');
@@ -44,6 +45,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/verify-otp" element={<OTPVerification />} />
               <Route path="/geolocation" element={<Geolocation />} />
               <Route
