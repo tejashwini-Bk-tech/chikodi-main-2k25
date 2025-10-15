@@ -282,7 +282,7 @@ const handleSubmit = async (e) => {
               <Button
                 type="submit"
                 className={`w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 ${
-                  allFieldsFilled ? 'animate-pulse' : ''
+                  allFieldsFilled ? 'animate-pulse [animation-duration:2.5s]' : ''
                 } hover:scale-[1.02]`}
               >
                 {t('signupButton')}
