@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -27,6 +27,7 @@ const Signup = () => {
   const [allFieldsFilled, setAllFieldsFilled] = useState(false);
   const [showPwSuggestion, setShowPwSuggestion] = useState(false);
   const [suggestedPw, setSuggestedPw] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     // Sequential animation for fields
@@ -78,11 +79,25 @@ const Signup = () => {
 
 const handleSubmit = async (e) => {
   e.preventDefault();
-
+  toast('Creating account...');
+  const full_name = (formData.fullName || '').trim();
+  const email = (formData.email || '').trim();
+  const password = formData.password || '';
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!full_name) {
+    toast.error('Full name required', { description: 'Please enter your full name.' });
+    return;
+  }
+  if (!emailValid) {
+    toast.error('Invalid email', { description: 'Please enter a valid email address.' });
+    return;
+  }
+  if (password.length < 8) {
+    toast.error('Weak password', { description: 'Use at least 8 characters.' });
+    return;
+  }
   try {
-    const email = formData.email.trim();
-    const password = formData.password;
-    const full_name = formData.fullName;
+    
 
     // ✅ Sign up user (Supabase handles existing/unconfirmed cases)
     const { data, error } = await supabase.auth.signUp({
@@ -229,16 +244,26 @@ const handleSubmit = async (e) => {
                 <Label htmlFor="password" className="text-sm font-medium">
                   {t('password')}
                 </Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  onFocus={handlePasswordFocus}
-                  className="mt-2 transition-all duration-200 focus:scale-[1.02]"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={handleChange}
+                    onFocus={handlePasswordFocus}
+                    className="mt-2 pr-10 transition-all duration-200 focus:scale-[1.02]"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
                 {showPwSuggestion && !formData.password && (
                   <div className="mt-2 p-3 rounded-md border border-slate-200 dark:border-slate-700">
                     <div className="text-sm mb-2">We generated a strong password for you:</div>

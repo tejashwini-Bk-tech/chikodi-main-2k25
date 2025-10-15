@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogIn } from 'lucide-react';
+import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -15,6 +15,7 @@ const Login = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [role, setRole] = useState('user');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Handle email verification redirect (exchange code for session)
   useEffect(() => {
@@ -59,15 +60,27 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    toast('Signing in...');
+    const email = (formData.email || '').trim();
+    const password = formData.password || '';
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailValid) {
+      toast.error('Invalid email', { description: 'Please enter a valid email address.' });
+      return;
+    }
+    if (!password) {
+      toast.error('Password required', { description: 'Enter your password to continue.' });
+      return;
+    }
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password,
       });
       if (error) {
         const msg = (error.message || '').toLowerCase();
-        if (msg.includes('invalid login credentials') || msg.includes('user not found')) {
-          toast('No account found', { description: 'Please sign up to continue.' });
+        if (msg.includes('invalid login credentials') || msg.includes('user not found ')) {
+          toast('No account found', { description: 'do enter correct email and password.' });
         } else {
           toast.error('Error', { description: error.message });
         }
@@ -127,6 +140,7 @@ const Login = () => {
   const handleGoogleLogin = () => {
     (async () => {
       try {
+        toast('Opening Google sign-in...');
         const redirectTo = `${window.location.origin}/auth/callback`;
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
@@ -203,15 +217,25 @@ const Login = () => {
               </div>
               <div>
                 <Label htmlFor="password">{t('password')}</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Enter your password"
-                  className="mt-2 transition-all duration-200 focus:scale-[1.02]"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Enter your password"
+                    className="mt-2 pr-10 transition-all duration-200 focus:scale-[1.02]"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
               {showForgotPassword && (
                 <div className="animate-in slide-in-from-top duration-300">

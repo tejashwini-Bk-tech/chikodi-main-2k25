@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
 
@@ -66,9 +66,9 @@ const OTPVerification = () => {
         setCountdown(60);
         setCanResend(false);
         setOtpReady(true);
-        toast({ title: 'OTP Sent', description: `Code sent to ${contact}` });
+        toast.success('OTP Sent', { description: `Code sent to ${contact}` });
       } catch (err) {
-        toast({ title: 'Failed to send OTP', description: 'Please try again', variant: 'destructive' });
+        toast.error('Failed to send OTP', { description: 'Please try again' });
       }
     })();
   };
@@ -84,7 +84,7 @@ const OTPVerification = () => {
             otp: otpValue
           }, { headers: { 'Content-Type': 'application/json' } });
           if (response?.data?.verified) {
-            toast({ title: 'Verification Successful!', description: 'Your phone number has been verified' });
+            toast.success('Verification Successful!', { description: 'Your phone number has been verified' });
             localStorage.setItem('isVerified', 'true');
             // If a session exists, update the profile immediately
             try {
@@ -96,7 +96,7 @@ const OTPVerification = () => {
                   .update({ phone: contact })
                   .eq('id', uid);
                 if (error) throw error;
-                toast({ title: 'Profile Updated', description: 'Phone number saved to your profile' });
+                toast.success('Profile Updated', { description: 'Phone number saved to your profile' });
                 // Go back to where the user came from (e.g., User Profile)
                 setTimeout(() => navigate(-1), 500);
                 return;
@@ -106,10 +106,10 @@ const OTPVerification = () => {
             localStorage.setItem('verifiedPhone', contact);
             setTimeout(() => navigate('/login'), 500);
           } else {
-            toast({ title: 'Invalid OTP', description: 'Please enter the correct OTP', variant: 'destructive' });
+            toast.error('Invalid OTP', { description: 'Please enter the correct OTP' });
           }
         } catch (err) {
-          toast({ title: 'Verification failed', description: 'Please try again', variant: 'destructive' });
+          toast.error('Verification failed', { description: 'Please try again' });
         }
       })();
     }
@@ -124,9 +124,9 @@ const OTPVerification = () => {
         }, { headers: { 'Content-Type': 'application/json' } });
         setCountdown(60);
         setCanResend(false);
-        toast({ title: 'OTP Resent', description: `New code sent to ${contact}` });
+        toast.success('OTP Resent', { description: `New code sent to ${contact}` });
       } catch (err) {
-        toast({ title: 'Failed to resend OTP', description: 'Please try again', variant: 'destructive' });
+        toast.error('Failed to resend OTP', { description: 'Please try again' });
       }
     })();
   };
@@ -196,9 +196,7 @@ const OTPVerification = () => {
                     />
                   ))}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
-                  Demo OTP: 123456
-                </p>
+               
               </div>
               )}
 

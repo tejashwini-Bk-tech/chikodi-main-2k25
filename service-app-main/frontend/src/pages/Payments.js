@@ -4,19 +4,67 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 
 const Payments = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: '', number: '', expiry: '', cvv: '' });
 
+  const luhnValid = (num) => {
+    const digits = (num || '').replace(/\D/g, '');
+    let sum = 0, alt = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let n = parseInt(digits[i], 10);
+      if (alt) {
+        n *= 2;
+        if (n > 9) n -= 9;
+      }
+      sum += n;
+      alt = !alt;
+    }
+    return digits.length >= 12 && sum % 10 === 0;
+  };
+
+  const expiryValid = (exp) => {
+    const m = /^\s*(0[1-9]|1[0-2])\/(\d{2})\s*$/.exec(exp || '');
+    if (!m) return false;
+    const mm = parseInt(m[1], 10);
+    const yy = parseInt(m[2], 10);
+    const now = new Date();
+    const curYY = now.getFullYear() % 100;
+    const curMM = now.getMonth() + 1;
+    return yy > curYY || (yy === curYY && mm >= curMM);
+  };
+
+  const cvvValid = (cvv) => /^[0-9]{3,4}$/.test((cvv || '').trim());
+
   const onPay = async (e) => {
     e.preventDefault();
+    const name = (form.name || '').trim();
+    const number = (form.number || '').trim();
+    const expiry = (form.expiry || '').trim();
+    const cvv = (form.cvv || '').trim();
+    if (!name) {
+      toast.error('Cardholder name required', { description: 'Please enter the name on the card.' });
+      return;
+    }
+    if (!luhnValid(number)) {
+      toast.error('Invalid card number', { description: 'Check the number and try again.' });
+      return;
+    }
+    if (!expiryValid(expiry)) {
+      toast.error('Invalid expiry', { description: 'Use MM/YY and ensure the date is in the future.' });
+      return;
+    }
+    if (!cvvValid(cvv)) {
+      toast.error('Invalid CVV', { description: 'CVV must be 3 or 4 digits.' });
+      return;
+    }
+    toast('Processing payment...');
     setLoading(true);
-    // Mock payment
     setTimeout(() => {
       setLoading(false);
-      toast({ title: 'Payment successful', description: 'Your payment has been processed.' });
+      toast.success('Payment successful', { description: 'Your payment has been processed.' });
     }, 800);
   };
 
