@@ -7,6 +7,7 @@ import AuthCallback from './components/AuthCallback';
 import { Toaster } from './components/ui/sonner';
 import Home from './components/Home';
 import Privacy from './components/Privacy';
+import Login from './components/Login';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/register" element={<ProviderRegistration />} />
           <Route path="/register/step/:step" element={<ProviderRegistration />} />
           <Route path="/auth/callback" element={<AuthCallback />} />

@@ -4,22 +4,43 @@ import { MapPin, BarChart3, Users, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useLanguage } from '../contexts/LanguageContext';
+import { supabase } from '../lib/supabaseClient';
+import { toast } from 'sonner';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [metrics, setMetrics] = useState(null);
   const [metricsStatus, setMetricsStatus] = useState('idle');
-  const [selectedProviders, setSelectedProviders] = useState([]);
+  const [provider, setProvider] = useState(null);
+  const [providerStatus, setProviderStatus] = useState('idle');
 
   useEffect(() => {
-    // Load selected providers from localStorage (placeholder key)
-    try {
-      const raw = localStorage.getItem('selectedProviders');
-      setSelectedProviders(raw ? JSON.parse(raw) : []);
-    } catch {
-      setSelectedProviders([]);
-    }
+    const fetchProvider = async () => {
+      try {
+        setProviderStatus('loading');
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user || null;
+        if (!user?.id) {
+          setProvider(null);
+          setProviderStatus('unauth');
+          return;
+        }
+        const { data, error } = await supabase
+          .from('providers')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (error) throw error;
+        setProvider(data || null);
+        setProviderStatus('success');
+      } catch (e) {
+        console.error('Failed to load provider:', e);
+        setProviderStatus('error');
+        setProvider(null);
+      }
+    };
+    fetchProvider();
   }, []);
 
   useEffect(() => {
@@ -131,21 +152,50 @@ const Dashboard = () => {
         <div className="mt-10">
           <Card className="border-0 shadow">
             <CardHeader>
-              <CardTitle>{t('mySelectedProviders') || 'My Selected Providers'}</CardTitle>
-              <CardDescription>{t('mySelectedProvidersDesc') || 'Your saved or booked providers'}</CardDescription>
+              <CardTitle>My Provider Profile</CardTitle>
+              <CardDescription>Details from Supabase providers table</CardDescription>
             </CardHeader>
             <CardContent>
-              {selectedProviders.length === 0 ? (
-                <div className="text-sm text-slate-600 dark:text-slate-300">{t('noProvidersSelected') || 'No providers selected yet. Browse providers to add to your list.'}</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {selectedProviders.map((p) => (
-                    <div key={p.id} className="p-3 rounded-lg border bg-white/60 dark:bg-slate-800/60">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-slate-500">{p.category}</div>
-                    </div>
-                  ))}
+              {providerStatus === 'loading' && (
+                <div className="text-sm text-slate-600">Loading provider…</div>
+              )}
+              {providerStatus === 'unauth' && (
+                <div className="text-sm text-red-600">Please login to view your provider profile.</div>
+              )}
+              {providerStatus === 'error' && (
+                <div className="text-sm text-red-600">Failed to load provider details.</div>
+              )}
+              {provider && (
+                <div className="space-y-2">
+                  <div className="text-sm">Provider ID: <span className="font-mono">{provider.provider_id}</span></div>
+                  <div className="text-sm">Professions: {(provider.professions || []).join(', ')}</div>
+                  <div className="text-sm">Verified: {provider.is_verified ? 'Yes' : 'No'}</div>
+                  <div className="text-sm">Location: {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'N/A'}</div>
+                  <div className="text-sm">Last Location Update: {provider.last_location_at ? new Date(provider.last_location_at).toLocaleString() : 'N/A'}</div>
+                  <div className="pt-2">
+                    <Button variant="outline" onClick={async () => {
+                      if (!('geolocation' in navigator)) { toast.error('Geolocation not supported'); return; }
+                      navigator.geolocation.getCurrentPosition(async (pos) => {
+                        try {
+                          const { latitude, longitude, accuracy } = pos.coords || {};
+                          const patch = { location: { lat: latitude, lng: longitude, accuracy }, last_location_at: new Date().toISOString() };
+                          const { error } = await supabase.from('providers').update(patch).eq('provider_id', provider.provider_id);
+                          if (error) throw error;
+                          toast.success('Location updated');
+                          setProvider(prev => prev ? { ...prev, ...patch } : prev);
+                        } catch (e) {
+                          console.error('Failed to update location', e);
+                          toast.error('Failed to update location');
+                        }
+                      }, (err) => toast.error(err?.message || 'Failed to get location'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+                    }}>
+                      Update My Location
+                    </Button>
+                  </div>
                 </div>
+              )}
+              {!provider && providerStatus === 'success' && (
+                <div className="text-sm text-slate-600">No provider profile found for your account.</div>
               )}
             </CardContent>
           </Card>

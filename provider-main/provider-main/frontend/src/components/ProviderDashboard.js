@@ -187,7 +187,7 @@ const ProviderDashboard = () => {
                       <div>
                         <p className="text-white/80 text-sm font-medium">Current Balance</p>
                         <p className="text-4xl font-bold text-white" data-testid="wallet-balance">
-                          ₹{provider.wallet_balance.toFixed(2)}
+                          ₹{Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00'}
                         </p>
                       </div>
                       <div className="text-white/60">
