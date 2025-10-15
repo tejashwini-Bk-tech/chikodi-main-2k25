@@ -136,7 +136,7 @@ const OTPVerification = () => {
       <div className="max-w-md mx-auto">
         <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-slate-800/90">
           <CardHeader className="space-y-2 text-center pb-6">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center mb-4 animate-pulse">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center mb-4 animate-pulse [animation-duration:2.5s]">
               <ShieldCheck className="w-8 h-8 text-white" />
             </div>
             <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
@@ -204,7 +204,7 @@ const OTPVerification = () => {
               {otpReady && (
                 <div className="text-center">
                   {!canResend ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 animate-pulse">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 animate-pulse [animation-duration:2.5s]">
                       Resend OTP in {countdown}s
                     </p>
                   ) : (
