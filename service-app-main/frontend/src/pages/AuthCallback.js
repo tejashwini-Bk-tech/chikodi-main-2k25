@@ -32,11 +32,15 @@ const AuthCallback = () => {
           }
         }
 
+        // Capture query params BEFORE cleaning the URL
+        const currentUrl = new URL(window.location.href);
+        const incomingType = currentUrl.searchParams.get('type');
+
         // STEP 3 — Get final session
         const { data: sessionData, error: sessionError } =
           await supabase.auth.getSession();
 
-        // Clean up URL
+        // Clean up URL (after we've captured the type)
         try {
           window.history.replaceState({}, document.title, `${window.location.origin}/auth/callback`);
         } catch {}
@@ -48,11 +52,49 @@ const AuthCallback = () => {
         }
 
         if (isMounted) {
-          const hasSession = !!sessionData?.session;
-          // Regardless of session presence, send user to Login as requested
-          const desc = hasSession ? 'You are now signed in. Please log in again.' : 'You can now log in.';
-          toast({ title: 'Email verified', description: desc, variant: 'default' });
-          navigate('/login', { replace: true });
+          // Handle password recovery: redirect to reset-password form
+          if (incomingType === 'recovery') {
+            navigate('/reset-password', { replace: true });
+            return;
+          }
+          const session = sessionData?.session;
+          const hasSession = !!session;
+          if (!hasSession) {
+            toast({ title: 'Email verified', description: 'You can now log in.', variant: 'default' });
+            navigate('/login', { replace: true });
+            return;
+          }
+
+          const provider = session.user?.app_metadata?.provider;
+          if (provider === 'google') {
+            try {
+              // Fetch role and minimal profile
+              const { data: prof } = await supabase
+                .from('profiles')
+                .select('role, full_name, phone')
+                .eq('id', session.user.id)
+                .maybeSingle();
+              const roleFromDb = prof?.role || 'user';
+              // Persist minimal info
+              localStorage.setItem('user', JSON.stringify({ id: session.user.id, email: session.user.email, fullName: prof?.full_name }));
+              localStorage.setItem('role', roleFromDb);
+              localStorage.setItem('isVerified', 'true');
+              toast({ title: 'Signed in with Google', description: 'Welcome!', variant: 'default' });
+              const providerUrl = process.env.REACT_APP_PROVIDER_URL;
+              if (roleFromDb === 'provider' && providerUrl) {
+                window.location.href = providerUrl;
+              } else {
+                navigate('/dashboard', { replace: true });
+              }
+            } catch (e) {
+              // Fallback to dashboard
+              navigate('/dashboard', { replace: true });
+            }
+          } else {
+            // Email link confirmation or other providers -> send to Login as per requirement
+            toast({ title: 'Email verified', description: 'You can now log in.', variant: 'default' });
+            navigate('/login', { replace: true });
+          }
         }
       } catch (err) {
         console.error('Auth callback error:', err);

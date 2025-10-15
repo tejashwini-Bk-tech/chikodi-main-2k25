@@ -125,7 +125,25 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    toast('Google login not configured', { description: 'We can enable OAuth later. Use email/password for now.' });
+    (async () => {
+      try {
+        const redirectTo = `${window.location.origin}/auth/callback`;
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            queryParams: {
+              prompt: 'select_account',
+              access_type: 'offline',
+            },
+          },
+        });
+        if (error) throw error;
+        // Supabase will handle redirect to Google; no further action here.
+      } catch (err) {
+        toast.error('Google login failed', { description: String(err?.message || err) });
+      }
+    })();
   };
 
   return (
