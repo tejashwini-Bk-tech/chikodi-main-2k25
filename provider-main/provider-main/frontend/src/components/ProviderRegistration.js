@@ -159,6 +159,88 @@ const ProviderRegistration = () => {
     pan_card: null
   });
 
+  // Local verification flags for Aadhaar and PAN via client-side OCR
+  const [aadhaarVerified, setAadhaarVerified] = useState(false);
+  const [panVerified, setPanVerified] = useState(false);
+
+  // Lazy-load Tesseract at runtime to avoid adding build dependencies
+  const loadTesseract = () => {
+    return new Promise((resolve, reject) => {
+      if (window.Tesseract) return resolve(window.Tesseract);
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js';
+      script.async = true;
+      script.onload = () => resolve(window.Tesseract);
+      script.onerror = () => reject(new Error('Failed to load OCR library'));
+      document.body.appendChild(script);
+    });
+  };
+
+  const ocrImage = async (base64) => {
+    try {
+      const Tesseract = await loadTesseract();
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      const { data } = await Tesseract.recognize(dataUrl, 'eng');
+      return data?.text || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const verifyAadhaarText = (text) => {
+    const cleaned = (text || '').replace(/[^0-9A-Z]/gi, ' ').toUpperCase();
+    const hasAadhaarWord = cleaned.includes('AADHAAR') || cleaned.includes('AADHAR');
+
+    // Verhoeff checksum tables
+    const d = [
+      [0,1,2,3,4,5,6,7,8,9],
+      [1,2,3,4,0,6,7,8,9,5],
+      [2,3,4,0,1,7,8,9,5,6],
+      [3,4,0,1,2,8,9,5,6,7],
+      [4,0,1,2,3,9,5,6,7,8],
+      [5,9,8,7,6,0,4,3,2,1],
+      [6,5,9,8,7,1,0,4,3,2],
+      [7,6,5,9,8,2,1,0,4,3],
+      [8,7,6,5,9,3,2,1,0,4],
+      [9,8,7,6,5,4,3,2,1,0]
+    ];
+    const p = [
+      [0,1,2,3,4,5,6,7,8,9],
+      [1,5,7,6,2,8,3,0,9,4],
+      [5,8,0,3,7,9,6,1,4,2],
+      [8,9,1,6,0,4,3,5,2,7],
+      [9,4,5,3,1,2,6,8,7,0],
+      [4,2,8,6,5,7,3,9,0,1],
+      [2,7,9,3,8,0,6,4,1,5],
+      [7,0,4,6,9,1,3,2,5,8]
+    ];
+    const verhoeffValidate = (num) => {
+      let c = 0;
+      const digits = (num + '').replace(/\D/g, '').split('').reverse().map(n => parseInt(n, 10));
+      for (let i = 0; i < digits.length; i++) {
+        c = d[c][p[(i + 1) % 8][digits[i]]];
+      }
+      return c === 0;
+    };
+
+    // find all 12-digit sequences and check Verhoeff checksum
+    const digitsOnly = (text || '').replace(/\D/g, ' ');
+    const matches = digitsOnly.match(/\b\d{12}\b/g) || [];
+    const hasValidAadhaarNumber = matches.some(m => verhoeffValidate(m));
+
+    // Strict requirement: both Aadhaar keyword and a valid checksum 12-digit number
+    return hasAadhaarWord && hasValidAadhaarNumber;
+  };
+
+  const verifyPanText = (text) => {
+    const cleaned = (text || '').toUpperCase();
+    const hasDeptWord = cleaned.includes('INCOME TAX DEPARTMENT') || cleaned.includes('PERMANENT ACCOUNT NUMBER');
+    const panRegex = /\b[A-Z]{5}[0-9]{4}[A-Z]\b/;
+    const hasPanFormat = panRegex.test(cleaned);
+    // Strict requirement: must have exact PAN format AND one of the PAN-related keywords
+    return hasPanFormat && hasDeptWord;
+  };
+
   const requiresTradeLicense = () => {
     return formData.professions.some(prof =>
       ['photographer', 'videographer', 'hairstylist', 'makeup_artist', 'massage_therapist', 'henna_artist', 'locksmith'].includes(prof)
@@ -220,6 +302,30 @@ const ProviderRegistration = () => {
       } else {
         setFormData(prev => ({ ...prev, [fieldName]: base64 }));
         setUploadedFiles(prev => ({ ...prev, [fieldName]: file.name }));
+
+        // Trigger OCR verification for Aadhaar and PAN
+        if (fieldName === 'aadhaar_card') {
+          setAadhaarVerified(false);
+          const text = await ocrImage(base64);
+          const ok = verifyAadhaarText(text);
+          setAadhaarVerified(!!ok);
+          if (ok) {
+            toast.success('Aadhaar appears valid');
+          } else {
+            toast.error('Could not verify Aadhaar. Please upload a clearer Aadhaar image');
+          }
+        }
+        if (fieldName === 'pan_card') {
+          setPanVerified(false);
+          const text = await ocrImage(base64);
+          const ok = verifyPanText(text);
+          setPanVerified(!!ok);
+          if (ok) {
+            toast.success('PAN appears valid');
+          } else {
+            toast.error('Could not verify PAN. Please upload a clearer PAN image');
+          }
+        }
       }
 
       toast.success(`${file.name} uploaded successfully`);
@@ -248,40 +354,32 @@ const ProviderRegistration = () => {
   const validateStep = () => {
     switch (currentStep) {
       case 1:
-
-        if (!formData.mobile_number || formData.professions.length === 0) {
-          toast.error('Please fill in mobile number and select at least one profession');
+        if (formData.professions.length === 0) {
+          toast.error('Please select at least one profession');
           return false;
         }
-        // basic mobile validation: 10 digits
-        if (!/^\d{10}$/.test(formData.mobile_number)) {
-          toast.error('Please enter a valid 10-digit mobile number');
-          return false;
-        }
-        // if email provided, validate format only (no verification required)
-        if (formData.email && !/^\S+@\S+\.[\S]+$/.test(formData.email)) {
-          toast.error('Please enter a valid email address');
-          return false;
-        }
-        return true;
-
-        // Add similar email OTP verification logic if email is provided
-        return true;
-
         return true;
       case 2:
+        if (!formData.aadhaar_card || !formData.pan_card) {
+          toast.error('Please upload both Aadhaar and PAN card');
+          return false;
+        }
+        if (!aadhaarVerified) {
+          toast.error('Aadhaar not verified. Please upload a valid Aadhaar image');
+          return false;
+        }
+        if (!panVerified) {
+          toast.error('PAN not verified. Please upload a valid PAN image');
+          return false;
+        }
+        return true;
+      case 3:
         if (requiresTradeLicense() && isLocksmiths() && !formData.trade_license) {
           toast.error('Trade License is mandatory for Locksmiths');
           return false;
         }
         if (!formData.work_sample) {
           toast.error('Please upload your best work sample');
-          return false;
-        }
-        return true;
-      case 3:
-        if (!formData.aadhaar_card || !formData.pan_card) {
-          toast.error('Please upload both Aadhaar and PAN card');
           return false;
         }
         return true;
@@ -515,137 +613,9 @@ const ProviderRegistration = () => {
                 <User className="h-8 w-8 text-emerald-600" />
               </div>
               <CardTitle className="text-3xl font-bold text-gray-800">Basic Information</CardTitle>
-              <p className="text-gray-600">Let's start with your contact details and profession</p>
+              <p className="text-gray-600">Select your profession(s) to continue</p>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="mobile" className="text-sm font-semibold flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Mobile Number *
-                  {mobileVerified && (
-                    <Badge className="ml-2 bg-green-100 text-green-700 border-green-200">Verified</Badge>
-                  )}
-                </Label>
-                <div className="flex space-x-2 items-center">
-                  <Input
-                    id="mobile"
-                    data-testid="mobile-input"
-                    type="tel"
-                    placeholder="Enter your mobile number"
-                    value={formData.mobile_number}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, mobile_number: e.target.value }));
-                      setMobileOtpSent(false);
-                      setMobileOtp('');
-                      setMobileVerified(false);
-                    }}
-                    disabled={mobileVerified}
-                    className="h-12 text-lg flex-grow"
-                  />
-                  <Button
-                    onClick={sendMobileOtp}
-                    disabled={!formData.mobile_number || mobileOtpSent}
-                    className="h-12 px-4"
-                    data-testid="send-mobile-otp-btn"
-                  >
-                    {mobileOtpSent ? 'OTP Sent' : 'Send OTP'}
-                  </Button>
-                </div>
-
-                {mobileOtpSent && !mobileVerified && (
-                  <>
-                    <Input
-                      type="text"
-                      placeholder="Enter OTP"
-                      value={mobileOtp}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                        setMobileOtp(val);
-                      }}
-                      disabled={otpExpired}
-                      maxLength={6}
-                      className="h-12 text-lg mt-2"
-                      data-testid="mobile-otp-input"
-                    />
-                    <div className="flex items-center gap-3 mt-2">
-                      <Button
-                        onClick={verifyMobileOtp}
-                        disabled={otpExpired || mobileOtp.length !== 6}
-                        className="h-10 px-4"
-                        data-testid="verify-mobile-otp-btn"
-                      >
-                        Verify OTP
-                      </Button>
-                      {!otpExpired ? (
-                        <p className="text-sm text-gray-600">Time remaining: {otpTimer}s</p>
-                      ) : (
-                        <p className="text-sm text-red-600">OTP expired.</p>
-                      )}
-                    </div>
-                    <Button
-                      onClick={() => {
-                        setOtpTimer(60);
-                        setOtpExpired(false);
-                        resendMobileOtp();
-                      }}
-                      disabled={!otpExpired}
-                      className="mt-2"
-                      data-testid="resend-otp-btn"
-                    >
-                      Resend OTP
-                    </Button>
-                  </>
-                )}
-
-
-                {/* {mobileVerified && (
-                  <p className="text-green-600 mt-1">Mobile number verified successfully</p>
-                )} */}
-              </div>
-
-
-              {/* //email// */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-semibold flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  Email
-                  {emailVerified && (
-                    <Badge className="ml-2 bg-green-100 text-green-700 border-green-200">Verified</Badge>
-
-)}
-                </Label>
-                <div className="flex space-x-2 items-center">
-                  <Input
-                    id="email"
-                    data-testid="email-input"
-                    type="email"
-                    placeholder="Enter your email address"
-                    value={formData.email}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, email: e.target.value }));
-                      setEmailOtpSent(false);
-                      setEmailVerified(false);
-                    }}
-                    disabled={emailVerified}
-                    className="h-12 text-lg flex-grow"
-                  />
-                  <Button
-                    onClick={sendEmailOtp}
-                    disabled={!formData.email || emailOtpSent || emailVerified}
-                    className="h-12 px-4"
-                    data-testid="validate-email-btn"
-                  >
-                    {emailVerified ? 'Verified' : (emailOtpSent ? 'Email Sent' : 'Send Verification Email')}
-                  </Button>
-                </div>
-
-                
-                {/* {emailVerified && (
-                  <p className="text-green-600 mt-1 font-medium">Email verified</p>
-                )} */}
-              </div>
-
-
               <div className="space-y-4">
                 <Label className="text-sm font-semibold flex items-center gap-2">
                   <Briefcase className="h-4 w-4" />
@@ -688,6 +658,62 @@ const ProviderRegistration = () => {
         );
 
       case 2:
+        return (
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader className="text-center pb-8">
+              <div className="mx-auto mb-4 p-3 bg-purple-100 rounded-full w-fit">
+                <Shield className="h-8 w-8 text-purple-600" />
+              </div>
+              <CardTitle className="text-3xl font-bold text-gray-800">Identity Verification</CardTitle>
+              <p className="text-gray-600">Upload your government issued ID proofs</p>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Aadhaar Card * (Mandatory)</Label>
+                <div className="file-upload-area">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'aadhaar_card')}
+                    className="hidden"
+                    id="aadhaar-card"
+                    data-testid="aadhaar-upload"
+                  />
+                  <label htmlFor="aadhaar-card" className="cursor-pointer">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg font-medium text-gray-700">
+                      {uploadedFiles.aadhaar_card ? uploadedFiles.aadhaar_card : 'Upload Aadhaar Card'}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">PAN Card * (Mandatory)</Label>
+                <div className="file-upload-area">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'pan_card')}
+                    className="hidden"
+                    id="pan-card"
+                    data-testid="pan-upload"
+                  />
+                  <label htmlFor="pan-card" className="cursor-pointer">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg font-medium text-gray-700">
+                      {uploadedFiles.pan_card ? uploadedFiles.pan_card : 'Upload PAN Card'}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
+                  </label>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+
+      case 3:
         return (
           <Card className="glass-card border-0 shadow-2xl">
             <CardHeader className="text-center pb-8">
@@ -801,62 +827,6 @@ const ProviderRegistration = () => {
                     <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-lg font-medium text-gray-700">
                       {uploadedFiles.work_sample ? uploadedFiles.work_sample : 'Upload your best work image'}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
-                  </label>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-
-      case 3:
-        return (
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader className="text-center pb-8">
-              <div className="mx-auto mb-4 p-3 bg-purple-100 rounded-full w-fit">
-                <Shield className="h-8 w-8 text-purple-600" />
-              </div>
-              <CardTitle className="text-3xl font-bold text-gray-800">Identity Verification</CardTitle>
-              <p className="text-gray-600">Upload your government issued ID proofs</p>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold">Aadhaar Card * (Mandatory)</Label>
-                <div className="file-upload-area">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'aadhaar_card')}
-                    className="hidden"
-                    id="aadhaar-card"
-                    data-testid="aadhaar-upload"
-                  />
-                  <label htmlFor="aadhaar-card" className="cursor-pointer">
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium text-gray-700">
-                      {uploadedFiles.aadhaar_card ? uploadedFiles.aadhaar_card : 'Upload Aadhaar Card'}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold">PAN Card * (Mandatory)</Label>
-                <div className="file-upload-area">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'pan_card')}
-                    className="hidden"
-                    id="pan-card"
-                    data-testid="pan-upload"
-                  />
-                  <label htmlFor="pan-card" className="cursor-pointer">
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-lg font-medium text-gray-700">
-                      {uploadedFiles.pan_card ? uploadedFiles.pan_card : 'Upload PAN Card'}
                     </p>
                     <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
                   </label>
