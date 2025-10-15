@@ -49,13 +49,10 @@ const AuthCallback = () => {
 
         if (isMounted) {
           const hasSession = !!sessionData?.session;
-          if (hasSession) {
-            toast({ title: 'Email verified', description: 'You are now signed in.', variant: 'default' });
-            navigate('/', { replace: true });
-          } else {
-            toast({ title: 'Email verified', description: 'You can now log in.', variant: 'default' });
-            navigate('/login', { replace: true });
-          }
+          // Regardless of session presence, send user to Login as requested
+          const desc = hasSession ? 'You are now signed in. Please log in again.' : 'You can now log in.';
+          toast({ title: 'Email verified', description: desc, variant: 'default' });
+          navigate('/login', { replace: true });
         }
       } catch (err) {
         console.error('Auth callback error:', err);
