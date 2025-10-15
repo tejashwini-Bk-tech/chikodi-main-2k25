@@ -65,7 +65,7 @@ const AuthCallback = () => {
             return;
           }
 
-          const provider = session.user?.app_metadata?.provider;
+          const provider = session.user?.app_metadata?.provider || (Array.isArray(session.user?.identities) && session.user.identities[0]?.provider) || null;
           if (provider === 'google') {
             try {
               // Fetch role and minimal profile
