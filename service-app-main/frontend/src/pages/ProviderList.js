@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Star, MapPin, Filter, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, Filter, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockProviders, mockCategories } from '../utils/mockData';
+import { supabase } from '../lib/supabaseClient';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
@@ -23,13 +23,48 @@ const ProviderList = () => {
   const [providers, setProviders] = useState([]);
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    // Simulate loading providers
-    setTimeout(() => {
-      setProviders(mockProviders);
-      setFilteredProviders(mockProviders);
-    }, 300);
+    const fetchProviders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('providers')
+          .select('provider_id, professions, is_verified, location, documents, created_at')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        const items = data || [];
+        // Build display objects and signed URLs for face photos if present
+        const withImages = await Promise.all(items.map(async (p) => {
+          let imageUrl = '';
+          const facePath = p?.documents?.face_photo;
+          if (facePath && typeof facePath === 'string') {
+            try {
+              const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
+              if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
+            } catch (_) {}
+          }
+          return {
+            id: p.provider_id,
+            professions: Array.isArray(p.professions) ? p.professions : [],
+            is_verified: !!p.is_verified,
+            location: p.location || null,
+            image: imageUrl,
+            created_at: p.created_at
+          };
+        }));
+        setProviders(withImages);
+        setFilteredProviders(withImages);
+        // Derive categories from professions present
+        const cats = Array.from(new Set(withImages.flatMap(p => (p.professions[0] ? [p.professions[0]] : []))));
+        setCategories(cats);
+      } catch (e) {
+        setProviders([]);
+        setFilteredProviders([]);
+        setCategories([]);
+      }
+    };
+    fetchProviders();
   }, []);
 
   useEffect(() => {
@@ -37,16 +72,15 @@ const ProviderList = () => {
     let filtered = providers;
     
     if (searchQuery) {
-      filtered = filtered.filter(provider =>
-        provider.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        provider.service.toLowerCase().includes(searchQuery.toLowerCase())
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(p =>
+        (p.professions.join(' ').toLowerCase().includes(q)) ||
+        (p.id && p.id.toLowerCase().includes(q))
       );
     }
     
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(provider =>
-        provider.service.toLowerCase() === selectedCategory.toLowerCase()
-      );
+      filtered = filtered.filter(p => (p.professions[0] || '').toLowerCase() === selectedCategory.toLowerCase());
     }
     
     setFilteredProviders(filtered);
@@ -100,13 +134,13 @@ const ProviderList = () => {
               >
                 {t('allCategories')}
               </DropdownMenuItem>
-              {mockCategories.map((category) => (
+              {categories.map((name) => (
                 <DropdownMenuItem
-                  key={category.id}
-                  onClick={() => setSelectedCategory(category.name)}
-                  className={selectedCategory === category.name ? 'bg-slate-100 dark:bg-slate-800' : ''}
+                  key={name}
+                  onClick={() => setSelectedCategory(name)}
+                  className={selectedCategory === name ? 'bg-slate-100 dark:bg-slate-800' : ''}
                 >
-                  {category.name}
+                  {name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -125,47 +159,31 @@ const ProviderList = () => {
                 {/* Provider Header */}
                 <div className="flex items-start gap-4 mb-4">
                   <Avatar className="w-16 h-16 ring-2 ring-blue-600">
-                    <AvatarImage src={provider.image} alt={provider.name} />
-                    <AvatarFallback>{provider.name[0]}</AvatarFallback>
+                    <AvatarImage src={provider.image} alt={provider.id} />
+                    <AvatarFallback>{(provider.professions[0] || 'P')[0]?.toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-lg">{provider.name}</h3>
-                      {provider.verified && (
+                      <h3 className="font-bold text-lg">{(provider.professions[0] || 'Provider').replace('_',' ')}</h3>
+                      {provider.is_verified && (
                         <CheckCircle2 className="w-5 h-5 text-blue-600" />
                       )}
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">{provider.service}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.id}</p>
                   </div>
                 </div>
 
                 {/* Provider Details */}
                 <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span className="font-semibold">{provider.rating}</span>
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        ({provider.reviews} reviews)
-                      </span>
-                    </div>
-                  </div>
                   
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <MapPin className="w-4 h-4" />
-                    {provider.distance}
+                    {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number'
+                      ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}`
+                      : 'Location N/A'}
                   </div>
                   
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-blue-600">{provider.price}</span>
-                    {provider.available ? (
-                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                        Available
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">Busy</Badge>
-                    )}
-                  </div>
+                  {/* Additional details can be added here (e.g., pricing) once available */}
                 </div>
 
                 {/* Action Buttons */}
@@ -179,7 +197,6 @@ const ProviderList = () => {
                   </Button>
                   <Button
                     onClick={() => navigate(`/book/${provider.id}`)}
-                    disabled={!provider.available}
                     className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white transition-all duration-200 hover:scale-105"
                   >
                     {t('bookNow')}

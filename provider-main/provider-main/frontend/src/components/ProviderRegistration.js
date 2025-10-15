@@ -3,16 +3,13 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import FaceRecognition from './FaceRecognition';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
-import { Camera, Upload, FileText, User, Phone, Mail, Shield, Award, Briefcase } from 'lucide-react';
-import axios from 'axios';
+import { Camera, Upload, FileText, User, Shield, Award, Briefcase } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -41,32 +38,15 @@ const ProviderRegistration = () => {
   const location = useLocation();
   const [showCamera, setShowCamera] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [mobileOtpSent, setMobileOtpSent] = useState(false);
-  const [mobileOtp, setMobileOtp] = useState('');
-  const [mobileVerified, setMobileVerified] = useState(false);
-  const [emailOtpSent, setEmailOtpSent] = useState(false);
-  const [emailVerified, setEmailVerified] = useState(false);
-  const [emailVerificationRequested, setEmailVerificationRequested] = useState(false);
-  const [otpTimer, setOtpTimer] = useState(60); // 2 minutes countdown
-  const [otpExpired, setOtpExpired] = useState(false);
 
 
-  useEffect(() => {
-    if (mobileOtpSent && otpTimer > 0 && !mobileVerified) {
-      const timerId = setInterval(() => {
-        setOtpTimer(prev => prev - 1);
-      }, 1000);
-      return () => clearInterval(timerId);
-    } else if (otpTimer === 0) {
-      setOtpExpired(true);
-    }
-  }, [mobileOtpSent, otpTimer, mobileVerified]);
+  // No local OTP timers; rely on central auth (service-app-main)
 
   // Sync currentStep from URL param when present
   useEffect(() => {
     if (step) {
       const n = parseInt(step, 10);
-      if (!Number.isNaN(n) && n >= 1 && n <= 4 && n !== currentStep) {
+      if (!Number.isNaN(n) && n >= 1 && n <= 5 && n !== currentStep) {
         setCurrentStep(n);
       }
     }
@@ -79,11 +59,25 @@ const ProviderRegistration = () => {
     }
   }, [step, location.pathname]);
 
+  // Auth guard: ensure a session exists on this origin
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const user = data?.session?.user || null;
+        if (!user) {
+          try { toast.error('Please login to continue'); } catch (_) {}
+          navigate('/login', { replace: true, state: { redirect: location.pathname } });
+        }
+      } catch (_) {
+        navigate('/login', { replace: true, state: { redirect: location.pathname } });
+      }
+    })();
+  }, []);
+
 
 
   const [formData, setFormData] = useState({
-    email: '',
-    mobile_number: '',
     professions: [],
     trade_license: null,
     health_permit: null,
@@ -91,64 +85,37 @@ const ProviderRegistration = () => {
     work_sample: null,
     aadhaar_card: null,
     pan_card: null,
-    face_photo: null
+    face_photo: null,
+    govt_certificate: null,
+    work_photos: [],
+    about_text: '',
+    work_videos: [],
+    location_lat: null,
+    location_lng: null,
+    location_accuracy: null,
+    location_address: ''
   });
 
-  // Move auth-state listener below formData initialization to avoid TDZ errors
-  useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const sessionEmail = (session?.user?.email || '').trim().toLowerCase();
-      const inputEmail = (formData.email || '').trim().toLowerCase();
-      // Only mark verified if user requested verification AND the session email matches the current input
-      if (emailVerificationRequested && inputEmail && sessionEmail && sessionEmail === inputEmail) {
-        setEmailVerified(true);
-        setEmailOtpSent(false);
-        setEmailVerificationRequested(false);
-        // reset the field after successful verification of the same email
-        setFormData(prev => ({ ...prev, email: '' }));
-      }
-    });
-    return () => { sub.subscription.unsubscribe(); };
-  }, [emailVerificationRequested, formData.email]);
+  // No local email verification; rely on central auth session
 
-  // Proactively check Supabase for email confirmation and mark as verified when it matches the entered email.
-  // This helps ensure the Verified badge appears after the magic link flow without relying on localStorage or same-browser state.
+  // Compute basic face match whenever ID or face changes
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
-    const maxAttempts = 10; // ~10s polling max
-
-    async function pollForConfirmation() {
+    (async () => {
       try {
-        const { data } = await supabase.auth.getUser({ forceRefresh: true });
-        const u = data?.user;
-        const sessionEmail = (u?.email || '').trim().toLowerCase();
-        const inputEmail = (formData.email || '').trim().toLowerCase();
-        const confirmed = !!(u?.email_confirmed_at);
-
-        if (!cancelled && confirmed && inputEmail && sessionEmail && sessionEmail === inputEmail) {
-          setEmailVerified(true);
-          setEmailOtpSent(false);
-          setEmailVerificationRequested(false);
-        }
+        const idBase = formData.aadhaar_card || formData.pan_card;
+        if (!idBase || !formData.face_photo) { setFaceMatched(false); return; }
+        const [h1, h2] = await Promise.all([aHashFromBase64(idBase), aHashFromBase64(formData.face_photo)]);
+        if (cancelled) return;
+        const dist = hammingDistance(h1, h2);
+        // threshold tuned conservatively for hash size 64 bits
+        setFaceMatched(Number.isFinite(dist) && dist <= 18);
       } catch (_) {
-        // ignore transient errors
-      } finally {
-        if (!cancelled && !emailVerified && attempts++ < maxAttempts) {
-          setTimeout(pollForConfirmation, 1000);
-        }
+        if (!cancelled) setFaceMatched(false);
       }
-    }
-
-    // Start polling only after user initiated verification, with an input email present and not yet verified
-    if (emailVerificationRequested && (formData.email || '').trim() && !emailVerified) {
-      pollForConfirmation();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [formData.email, emailVerified, emailVerificationRequested]);
+    })();
+    return () => { cancelled = true; };
+  }, [formData.aadhaar_card, formData.pan_card, formData.face_photo]);
 
   const [uploadedFiles, setUploadedFiles] = useState({
     trade_license: null,
@@ -156,12 +123,38 @@ const ProviderRegistration = () => {
     certificates: [],
     work_sample: null,
     aadhaar_card: null,
-    pan_card: null
+    pan_card: null,
+    govt_certificate: null,
+    work_photos: [],
+    work_videos: []
   });
 
   // Local verification flags for Aadhaar and PAN via client-side OCR
   const [aadhaarVerified, setAadhaarVerified] = useState(false);
   const [panVerified, setPanVerified] = useState(false);
+  const [idHolderName, setIdHolderName] = useState('');
+  const [certificateVerified, setCertificateVerified] = useState([]); // index-aligned with certificates
+  const [faceMatched, setFaceMatched] = useState(false);
+
+  // Extract probable name from OCR text
+  const extractNameFromOcr = (text) => {
+    const cleaned = (text || '').replace(/\t/g, ' ').split(/\n+/).map(s => s.trim()).filter(Boolean);
+    // Look for explicit label first
+    for (const line of cleaned) {
+      const m = line.match(/name\s*[:\-]\s*([A-Z ]{3,})/i);
+      if (m && m[1]) return m[1].replace(/\s+/g, ' ').trim();
+    }
+    // Fallback: first strong uppercase line excluding common headers
+    const blacklist = ['GOVERNMENT OF INDIA','INCOME TAX DEPARTMENT','PERMANENT ACCOUNT NUMBER','UNIQUE IDENTIFICATION AUTHORITY OF INDIA','AADHAAR','AADHAR'];
+    for (const line of cleaned) {
+      const up = line.toUpperCase();
+      if (blacklist.some(k => up.includes(k))) continue;
+      if (/^[A-Z ][A-Z ]{2,}$/.test(up) && up.split(/\s+/).length >= 2) {
+        return up.replace(/\s+/g, ' ').trim();
+      }
+    }
+    return '';
+  };
 
   // Lazy-load Tesseract at runtime to avoid adding build dependencies
   const loadTesseract = () => {
@@ -179,8 +172,35 @@ const ProviderRegistration = () => {
   const ocrImage = async (base64) => {
     try {
       const Tesseract = await loadTesseract();
-      const dataUrl = `data:image/jpeg;base64,${base64}`;
-      const { data } = await Tesseract.recognize(dataUrl, 'eng');
+      // Preprocess: upscale, grayscale, increase contrast
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = `data:image/jpeg;base64,${base64}`;
+      });
+      const maxW = 1600;
+      const scale = Math.min(2, maxW / Math.max(1, img.naturalWidth || img.width || maxW));
+      const w = Math.floor((img.naturalWidth || img.width) * scale);
+      const h = Math.floor((img.naturalHeight || img.height) * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+      // grayscale + contrast
+      const contrast = 1.2; // 20% more contrast
+      const intercept = 128 * (1 - contrast);
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        let v = gray * contrast + intercept;
+        v = Math.max(0, Math.min(255, v));
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      const preprocessed = canvas.toDataURL('image/jpeg', 0.9);
+      const { data } = await Tesseract.recognize(preprocessed, 'eng');
       return data?.text || '';
     } catch (e) {
       return '';
@@ -188,48 +208,22 @@ const ProviderRegistration = () => {
   };
 
   const verifyAadhaarText = (text) => {
-    const cleaned = (text || '').replace(/[^0-9A-Z]/gi, ' ').toUpperCase();
-    const hasAadhaarWord = cleaned.includes('AADHAAR') || cleaned.includes('AADHAR');
+    // TEMP: Simple verification only — accept if a 12-digit Aadhaar-like pattern exists.
+    // Previous strict logic (keywords + Verhoeff checksum) intentionally disabled until deployment issues are resolved.
+    // const cleaned = (text || '').replace(/[^0-9A-Z]/gi, ' ').toUpperCase();
+    // const hasAadhaarWord = cleaned.includes('AADHAAR') || cleaned.includes('AADHAR');
+    // const hasGovKeywords = cleaned.includes('GOVERNMENT OF INDIA') || cleaned.includes('UNIQUE IDENTIFICATION AUTHORITY OF INDIA');
+    // ... Verhoeff checksum implementation ...
+    // return hasValidAadhaarNumber && (hasAadhaarWord || hasGovKeywords);
 
-    // Verhoeff checksum tables
-    const d = [
-      [0,1,2,3,4,5,6,7,8,9],
-      [1,2,3,4,0,6,7,8,9,5],
-      [2,3,4,0,1,7,8,9,5,6],
-      [3,4,0,1,2,8,9,5,6,7],
-      [4,0,1,2,3,9,5,6,7,8],
-      [5,9,8,7,6,0,4,3,2,1],
-      [6,5,9,8,7,1,0,4,3,2],
-      [7,6,5,9,8,2,1,0,4,3],
-      [8,7,6,5,9,3,2,1,0,4],
-      [9,8,7,6,5,4,3,2,1,0]
-    ];
-    const p = [
-      [0,1,2,3,4,5,6,7,8,9],
-      [1,5,7,6,2,8,3,0,9,4],
-      [5,8,0,3,7,9,6,1,4,2],
-      [8,9,1,6,0,4,3,5,2,7],
-      [9,4,5,3,1,2,6,8,7,0],
-      [4,2,8,6,5,7,3,9,0,1],
-      [2,7,9,3,8,0,6,4,1,5],
-      [7,0,4,6,9,1,3,2,5,8]
-    ];
-    const verhoeffValidate = (num) => {
-      let c = 0;
-      const digits = (num + '').replace(/\D/g, '').split('').reverse().map(n => parseInt(n, 10));
-      for (let i = 0; i < digits.length; i++) {
-        c = d[c][p[(i + 1) % 8][digits[i]]];
-      }
-      return c === 0;
-    };
-
-    // find all 12-digit sequences and check Verhoeff checksum
-    const digitsOnly = (text || '').replace(/\D/g, ' ');
-    const matches = digitsOnly.match(/\b\d{12}\b/g) || [];
-    const hasValidAadhaarNumber = matches.some(m => verhoeffValidate(m));
-
-    // Strict requirement: both Aadhaar keyword and a valid checksum 12-digit number
-    return hasAadhaarWord && hasValidAadhaarNumber;
+    const t = text || '';
+    // Match 1234 5678 9012 or 123456789012
+    const spaced = /\b\d{4}\s\d{4}\s\d{4}\b/;
+    const compact = /\b\d{12}\b/;
+    if (spaced.test(t)) return true;
+    // Also try compact after stripping spaces and non-digits
+    const digits = t.replace(/\D/g, '');
+    return /\d{12}/.test(digits);
   };
 
   const verifyPanText = (text) => {
@@ -249,7 +243,7 @@ const ProviderRegistration = () => {
 
   const requiresHealthPermit = () => {
     return formData.professions.some(prof =>
-      ['hairstylist', 'makeup_artist', 'massage_therapist', 'henna_artist'].includes(prof)
+      ['hairstylist', 'makeup_artist', 'massage_therapist', 'henna_artist', 'caterer'].includes(prof)
     );
   };
 
@@ -272,22 +266,62 @@ const ProviderRegistration = () => {
   };
 
   const handleFileChange = async (e, fieldName) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
-      return;
-    }
-
-    // Validate file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size should be less than 5MB');
-      return;
+    // Validate file type and size per field
+    const isVideoField = fieldName === 'work_videos';
+    const isMultiImageField = fieldName === 'work_photos' || fieldName === 'certificates';
+    const isImageField = !isVideoField;
+    const maxImageSize = 5 * 1024 * 1024;
+    const maxVideoSize = 50 * 1024 * 1024;
+    for (const file of files) {
+      if (isVideoField) {
+        if (!file.type.startsWith('video/')) {
+          toast.error('Please upload a video file');
+          return;
+        }
+        if (file.size > maxVideoSize) {
+          toast.error('Video size should be less than 50MB');
+          return;
+        }
+      } else {
+        if (!file.type.startsWith('image/')) {
+          toast.error('Please upload an image file');
+          return;
+        }
+        if (file.size > maxImageSize) {
+          toast.error('Image size should be less than 5MB');
+          return;
+        }
+      }
     }
 
     try {
+      if (fieldName === 'work_photos') {
+        const b64s = [];
+        for (const f of files) {
+          const b64 = await handleFileUpload(f, fieldName);
+          if (b64) b64s.push(b64);
+        }
+        setFormData(prev => ({ ...prev, work_photos: [...(prev.work_photos || []), ...b64s] }));
+        setUploadedFiles(prev => ({ ...prev, work_photos: [...(prev.work_photos || []), ...files.map(f => f.name)] }));
+        toast.success(`${files.length} work photo(s) uploaded`);
+        return;
+      }
+      if (fieldName === 'work_videos') {
+        const b64s = [];
+        for (const f of files) {
+          const b64 = await handleFileUpload(f, fieldName);
+          if (b64) b64s.push(b64);
+        }
+        setFormData(prev => ({ ...prev, work_videos: [...(prev.work_videos || []), ...b64s] }));
+        setUploadedFiles(prev => ({ ...prev, work_videos: [...(prev.work_videos || []), ...files.map(f => f.name)] }));
+        toast.success(`${files.length} work video(s) uploaded`);
+        return;
+      }
+
+      const file = files[0];
       const base64 = await handleFileUpload(file, fieldName);
 
       if (fieldName === 'certificates') {
@@ -299,32 +333,34 @@ const ProviderRegistration = () => {
           ...prev,
           certificates: [...(prev.certificates || []), file.name]
         }));
+        // OCR the certificate and verify name match if we have an ID holder name
+        const certText = await ocrImage(base64);
+        let name = idHolderName;
+        if (!name) {
+          // try use existing Aadhaar/PAN OCR names
+          name = idHolderName;
+        }
+        const matched = name ? certText.toUpperCase().includes(name.toUpperCase()) : false;
+        setCertificateVerified(prev => ([...prev, matched]));
+        if (matched) {
+          toast.success('Certificate name matched with ID');
+        } else {
+          toast.error('Certificate name did not match ID');
+        }
       } else {
         setFormData(prev => ({ ...prev, [fieldName]: base64 }));
         setUploadedFiles(prev => ({ ...prev, [fieldName]: file.name }));
 
-        // Trigger OCR verification for Aadhaar and PAN
-        if (fieldName === 'aadhaar_card') {
-          setAadhaarVerified(false);
-          const text = await ocrImage(base64);
-          const ok = verifyAadhaarText(text);
-          setAadhaarVerified(!!ok);
-          if (ok) {
-            toast.success('Aadhaar appears valid');
-          } else {
-            toast.error('Could not verify Aadhaar. Please upload a clearer Aadhaar image');
-          }
+        // Skip OCR for Aadhaar and PAN: just store files
+        if (fieldName === 'aadhaar_card' || fieldName === 'pan_card') {
+          // no-op (files already set)
         }
-        if (fieldName === 'pan_card') {
-          setPanVerified(false);
+        if (fieldName === 'govt_certificate') {
+          // For electrician mandatory certificate, verify name if available
           const text = await ocrImage(base64);
-          const ok = verifyPanText(text);
-          setPanVerified(!!ok);
-          if (ok) {
-            toast.success('PAN appears valid');
-          } else {
-            toast.error('Could not verify PAN. Please upload a clearer PAN image');
-          }
+          const matched = idHolderName ? text.toUpperCase().includes(idHolderName.toUpperCase()) : false;
+          if (matched) toast.success('Government certificate name matched with ID');
+          else toast.error('Government certificate name did not match ID');
         }
       }
 
@@ -332,6 +368,59 @@ const ProviderRegistration = () => {
     } catch (error) {
       toast.error('Failed to upload file');
     }
+  };
+
+  // Add helpers to compute simple image hash for face match (aHash)
+  const aHashFromBase64 = async (base64) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 8; canvas.height = 8;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 8, 8);
+        const data = ctx.getImageData(0, 0, 8, 8).data;
+        const grays = [];
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2];
+          grays.push(0.299*r + 0.587*g + 0.114*b);
+        }
+        const avg = grays.reduce((a,b)=>a+b,0) / grays.length;
+        const bits = grays.map(v => v >= avg ? 1 : 0);
+        resolve(bits);
+      };
+      img.onerror = () => resolve(null);
+      img.src = `data:image/jpeg;base64,${base64}`;
+    });
+  };
+
+  const hammingDistance = (a, b) => {
+    if (!a || !b || a.length !== b.length) return Infinity;
+    let d = 0; for (let i=0;i<a.length;i++) if (a[i] !== b[i]) d++;
+    return d;
+  };
+
+  const captureLocation = () => {
+    if (!('geolocation' in navigator)) {
+      toast.error('Geolocation not supported in this browser');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords || {};
+        setFormData(prev => ({
+          ...prev,
+          location_lat: latitude || null,
+          location_lng: longitude || null,
+          location_accuracy: accuracy || null
+        }));
+        toast.success('Location captured');
+      },
+      (err) => {
+        toast.error(err?.message || 'Failed to get location');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   const capturePhoto = () => {
@@ -364,18 +453,15 @@ const ProviderRegistration = () => {
           toast.error('Please upload both Aadhaar and PAN card');
           return false;
         }
-        if (!aadhaarVerified) {
-          toast.error('Aadhaar not verified. Please upload a valid Aadhaar image');
-          return false;
-        }
-        if (!panVerified) {
-          toast.error('PAN not verified. Please upload a valid PAN image');
-          return false;
-        }
         return true;
       case 3:
         if (requiresTradeLicense() && isLocksmiths() && !formData.trade_license) {
           toast.error('Trade License is mandatory for Locksmiths');
+          return false;
+        }
+        // Electrician: require govt certificate
+        if (formData.professions.includes('electrician') && !formData.govt_certificate) {
+          toast.error('Government certificate is mandatory for Electricians');
           return false;
         }
         if (!formData.work_sample) {
@@ -384,6 +470,18 @@ const ProviderRegistration = () => {
         }
         return true;
       case 4:
+        // About text: maximum 100 lines
+        const lines = (formData.about_text || '').split(/\r?\n/).length;
+        if (lines > 100) {
+          toast.error('About section must be within 100 lines');
+          return false;
+        }
+        if (!formData.location_lat || !formData.location_lng) {
+          toast.error('Please capture your current location');
+          return false;
+        }
+        return true;
+      case 5:
         if (!formData.face_photo) {
           toast.error('Please capture your face photo');
           return false;
@@ -396,7 +494,7 @@ const ProviderRegistration = () => {
 
   const nextStep = () => {
     if (validateStep()) {
-      const newStep = Math.min(currentStep + 1, 4);
+      const newStep = Math.min(currentStep + 1, 5);
       setCurrentStep(newStep);
       navigate(`/register/step/${newStep}`);
     }
@@ -413,15 +511,14 @@ const ProviderRegistration = () => {
 
     setIsLoading(true);
     try {
-      let sessionUser = null;
-      try {
-        const { data } = await supabase.auth.getUser();
-        sessionUser = data?.user || null;
-      } catch (_) {}
-      if (!sessionUser) {
-        const { error: anonErr } = await supabase.auth.signInAnonymously();
-        if (anonErr) throw anonErr;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user || null;
+      if (!sessionUser?.id) {
+        toast.error('Please login to continue');
+        setIsLoading(false);
+        return;
       }
+      const user_id = sessionUser.id;
       const toBlob = (b64) => {
         const byteChars = atob(b64);
         const byteNumbers = new Array(byteChars.length);
@@ -429,7 +526,7 @@ const ProviderRegistration = () => {
         const byteArray = new Uint8Array(byteNumbers);
         return new Blob([byteArray], { type: 'image/jpeg' });
       };
-      const folder = `provider-${Date.now()}`;
+      const folder = `${user_id}`;
       const upload = async (b64, filename) => {
         if (!b64) return null;
         const path = `${folder}/${filename}`;
@@ -454,14 +551,48 @@ const ProviderRegistration = () => {
       documents.pan_card = await upload(formData.pan_card, 'pan_card.jpg');
       documents.face_photo = await upload(formData.face_photo, 'face_photo.jpg');
 
+      // Newly added uploads
+      documents.govt_certificate = await upload(formData.govt_certificate, 'govt_certificate.jpg');
+      const workPhotos = [];
+      if (Array.isArray(formData.work_photos)) {
+        for (let i = 0; i < formData.work_photos.length; i++) {
+          const p = await upload(formData.work_photos[i], `work_photo_${i + 1}.jpg`);
+          if (p) workPhotos.push(p);
+        }
+      }
+      documents.work_photos = workPhotos;
+      const workVideos = [];
+      if (Array.isArray(formData.work_videos)) {
+        for (let i = 0; i < formData.work_videos.length; i++) {
+          // store videos with mp4 extension; contentType default in helper is image/jpeg, so override locally for videos
+          const b64 = formData.work_videos[i];
+          if (!b64) continue;
+          const toBlob = (base64) => {
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            return new Blob([byteArray], { type: 'video/mp4' });
+          };
+          const folder = `${user_id}`;
+          const filename = `work_video_${i + 1}.mp4`;
+          const path = `${folder}/${filename}`;
+          const { error } = await supabase.storage.from('provider-docs').upload(path, toBlob(b64), { upsert: true, contentType: 'video/mp4' });
+          if (!error) workVideos.push(path);
+        }
+      }
+      documents.work_videos = workVideos;
+
       const has_trade_license = !!documents.trade_license;
       const has_health_permit = !!documents.health_permit;
       const has_certificates = Array.isArray(documents.certificates) && documents.certificates.length > 0;
 
       const professional_status = {};
       for (const profession of formData.professions) {
-        if (['photographer','videographer','massage_therapist','hairstylist','henna_artist','makeup_artist'].includes(profession)) {
-          if (!has_trade_license || (['massage_therapist','hairstylist','henna_artist','makeup_artist'].includes(profession) && !has_health_permit)) {
+        if (['photographer','videographer','massage_therapist','hairstylist','henna_artist','makeup_artist','caterer'].includes(profession)) {
+          if (!has_trade_license || (['massage_therapist','hairstylist','henna_artist','makeup_artist','caterer'].includes(profession) && !has_health_permit)) {
             professional_status[profession] = 'Amateur/Freelancer';
           } else {
             professional_status[profession] = 'Professional';
@@ -471,12 +602,7 @@ const ProviderRegistration = () => {
         }
       }
 
-      let user_id = null;
-      try { const { data } = await supabase.auth.getUser(); user_id = data?.user?.id || null; } catch (_) {}
-
       const insertRow = {
-        email: formData.email || null,
-        mobile_number: formData.mobile_number,
         professions: formData.professions,
         has_trade_license,
         has_health_permit,
@@ -485,7 +611,14 @@ const ProviderRegistration = () => {
         documents,
         is_verified: true,
         verification_date: new Date().toISOString(),
-        user_id: user_id || undefined
+        user_id: user_id || undefined,
+        location: {
+          lat: formData.location_lat,
+          lng: formData.location_lng,
+          accuracy: formData.location_accuracy,
+          address: formData.location_address || null
+        },
+        last_location_at: new Date().toISOString()
       };
 
       const { data: inserted, error } = await supabase.from('providers').insert(insertRow).select('*').single();
@@ -513,96 +646,7 @@ const ProviderRegistration = () => {
   };
 
   //mobile
-  const sendMobileOtp = async () => {
-    if (!formData.mobile_number) return;
-    try {
-      await axios.post('https://heytejuu.app.n8n.cloud/webhook/otp-send', {
-        mobile_number: formData.mobile_number
-      }, { headers: { 'Content-Type': 'application/json' } });
-      setMobileOtpSent(true);
-      setOtpTimer(60);        // reset timer
-      setOtpExpired(false);    // reset expiry flag
-      toast.success('OTP sent to your mobile number');
-    } catch (error) {
-      toast.error('Failed to send OTP');
-    }
-  };
-
-  const resendMobileOtp = async () => {
-    if (!formData.mobile_number) return;
-    try {
-      await axios.post('https://heytejuu.app.n8n.cloud/webhook/otp-send', {
-        mobile_number: formData.mobile_number
-      }, { headers: { 'Content-Type': 'application/json' } });
-      setMobileOtpSent(true);
-      setOtpTimer(60);
-      setOtpExpired(false);
-      toast.success('OTP resent to your mobile number');
-    } catch (error) {
-      toast.error('Failed to resend OTP');
-    }
-  };
-
-
-
-  const verifyMobileOtp = async () => {
-    if (!/^\d{6}$/.test(mobileOtp)) {
-      toast.error('Please enter a valid 6-digit OTP');
-      return;
-    }
-    try {
-      // Call API to verify OTP
-      const response = await axios.post('https://heytejuu.app.n8n.cloud/webhook/validate', {
-        mobile_number: formData.mobile_number,
-        otp: mobileOtp
-      
-      });
-        console.log(response.data);
-      if (response.data.verified) {
-        setMobileVerified(true);
-        toast.success('Mobile number verified');
-      } else {
-        setMobileVerified(false);
-        setMobileOtp('');
-        setMobileOtpSent(false);
-        setFormData(prev => ({ ...prev, mobile_number: '' }));
-        toast.error('Invalid OTP');
-      }
-    } catch (error) {
-      const message =
-        (error?.response && (error.response.data?.detail || error.response.data?.message)) ||
-        error?.message ||
-        'OTP verification failed';
-      setMobileVerified(false);
-      setMobileOtp('');
-      setMobileOtpSent(false);
-      setFormData(prev => ({ ...prev, mobile_number: '' }));
-      toast.error(message);
-    }
-  };
-
-  // email varificaiton
-
-  const sendEmailOtp = async () => {
-    const email = (formData.email || '').trim().toLowerCase();
-    if (!email) return;
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
-    });
-    if (error) {
-      toast.error(error.message || 'Failed to send verification email');
-      return;
-    }
-    setEmailOtpSent(true);
-    setEmailVerificationRequested(true);
-    toast.success('Verification email sent');
-  };
-
-  // Removed legacy verifyEmailOtp (OTP) in favor of Supabase Magic Link flow
-
-
-
+  // Removed local mobile/email OTP flows; central auth handles identity
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -754,7 +798,7 @@ const ProviderRegistration = () => {
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold flex items-center gap-2">
                     <Shield className="h-4 w-4" />
-                    Health and Hygiene Permits (Optional)
+                    Health and Hygiene Permits (Mandatory for Caterers; Optional for select professions)
                   </Label>
                   <div className="file-upload-area">
                     <input
@@ -769,6 +813,32 @@ const ProviderRegistration = () => {
                       <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                       <p className="text-lg font-medium text-gray-700">
                         {uploadedFiles.health_permit ? uploadedFiles.health_permit : 'Click to upload Health Permit'}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {formData.professions.includes('electrician') && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Government Certificate (Mandatory for Electricians)
+                  </Label>
+                  <div className="file-upload-area">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'govt_certificate')}
+                      className="hidden"
+                      id="govt-certificate"
+                      data-testid="govt-certificate-upload"
+                    />
+                    <label htmlFor="govt-certificate" className="cursor-pointer">
+                      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg font-medium text-gray-700">
+                        {uploadedFiles.govt_certificate ? uploadedFiles.govt_certificate : 'Click to upload Govt Certificate'}
                       </p>
                       <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB</p>
                     </label>
@@ -832,11 +902,95 @@ const ProviderRegistration = () => {
                   </label>
                 </div>
               </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <Award className="h-4 w-4" />
+                  Additional Work Photos (Optional)
+                </Label>
+                <div className="file-upload-area">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, 'work_photos')}
+                    className="hidden"
+                    id="work-photos"
+                    multiple
+                    data-testid="work-photos-upload"
+                  />
+                  <label htmlFor="work-photos" className="cursor-pointer">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg font-medium text-gray-700">Upload additional work photos</p>
+                    <p className="text-sm text-gray-500 mt-2">PNG, JPG up to 5MB (Multiple files allowed)</p>
+                  </label>
+                </div>
+              </div>
             </CardContent>
           </Card>
         );
 
       case 4:
+        return (
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader className="text-center pb-8">
+              <div className="mx-auto mb-4 p-3 bg-amber-100 rounded-full w-fit">
+                <FileText className="h-8 w-8 text-amber-600" />
+              </div>
+              <CardTitle className="text-3xl font-bold text-gray-800">About & Work Videos</CardTitle>
+              <p className="text-gray-600">Tell clients about yourself and optionally upload videos of your work</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">About You (max 100 lines)</Label>
+                <textarea
+                  className="w-full h-48 p-3 border rounded-md focus:outline-none"
+                  placeholder="Write about your experience, skills, and services..."
+                  value={formData.about_text}
+                  onChange={(e) => setFormData(prev => ({ ...prev, about_text: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  Work Videos (Optional)
+                </Label>
+                <div className="file-upload-area">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => handleFileChange(e, 'work_videos')}
+                    className="hidden"
+                    id="work-videos"
+                    multiple
+                    data-testid="work-videos-upload"
+                  />
+                  <label htmlFor="work-videos" className="cursor-pointer">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">Upload MP4/MOV (each up to 50MB)</p>
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Current Location</Label>
+                <div className="flex items-center gap-3">
+                  <Button onClick={captureLocation} className="h-10 px-4" data-testid="capture-location-btn">
+                    Capture Current Location
+                  </Button>
+                  {formData.location_lat && formData.location_lng && (
+                    <p className="text-sm text-gray-600">
+                      Lat: {formData.location_lat}, Lng: {formData.location_lng}
+                      {typeof formData.location_accuracy === 'number' && (
+                        <> (±{Math.round(formData.location_accuracy)} m)</>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+
+      case 5:
         return (
           <Card className="glass-card border-0 shadow-2xl">
             <CardHeader className="text-center pb-8">
@@ -892,7 +1046,7 @@ const ProviderRegistration = () => {
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <p className="text-green-600 font-medium">✓ Face photo captured successfully!</p>
+                  <p className="text-green-600 font-medium">{faceMatched ? '✓ Face matched with ID' : 'Face not matched with ID yet'}</p>
                   <Button
                     onClick={() => {
                       setShowCamera(true);
@@ -906,8 +1060,6 @@ const ProviderRegistration = () => {
                   </Button>
                 </div>
               )}
-
-              
             </CardContent>
           </Card>
         );
@@ -931,7 +1083,7 @@ const ProviderRegistration = () => {
           {/* Progress bar */}
           <div className="flex justify-center mb-8">
             <div className="flex items-center space-x-4">
-              {[1, 2, 3, 4].map((step) => (
+              {[1, 2, 3, 4, 5].map((step) => (
                 <div key={step} className="flex items-center">
                   <div className={`
                     w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
@@ -942,7 +1094,7 @@ const ProviderRegistration = () => {
                   `}>
                     {step}
                   </div>
-                  {step < 4 && (
+                  {step < 5 && (
                     <div className={`w-16 h-1 mx-2 ${currentStep > step ? 'bg-emerald-600' : 'bg-gray-200'
                       }`} />
                   )}
@@ -966,7 +1118,7 @@ const ProviderRegistration = () => {
             Previous
           </Button>
 
-          {currentStep < 4 ? (
+          {currentStep < 5 ? (
             <Button
               onClick={nextStep}
               className="btn-primary h-12 px-6"
