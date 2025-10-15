@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
 const UserProfile = () => {
@@ -88,10 +88,7 @@ const UserProfile = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('role');
     localStorage.removeItem('isVerified');
-    toast({
-      title: "Logged Out",
-      description: "You have been logged out successfully",
-    });
+    toast.success('Logged Out', { description: 'You have been logged out successfully' });
     navigate('/login');
   };
 
@@ -101,7 +98,11 @@ const UserProfile = () => {
     const full_name = (form.fullName || '').trim();
     const avatar_url = (form.avatarUrl || '').trim();
     if (!full_name) {
-      toast({ title: 'Name required', description: 'Please enter your full name' });
+      toast.error('Name required', { description: 'Please enter your full name' });
+      return;
+    }
+    if (avatar_url && !/^https?:\/\//i.test(avatar_url)) {
+      toast.error('Invalid URL', { description: 'Avatar URL must start with http:// or https://' });
       return;
     }
     setSaving(true);
@@ -116,10 +117,10 @@ const UserProfile = () => {
       setUser(updated);
       const local = JSON.parse(localStorage.getItem('user') || '{}');
       localStorage.setItem('user', JSON.stringify({ ...local, fullName: full_name }));
-      toast({ title: 'Profile updated', description: 'Your changes have been saved' });
+      toast.success('Profile updated', { description: 'Your changes have been saved' });
       setEditing(false);
     } catch (err) {
-      toast({ title: 'Update failed', description: String(err?.message || err) });
+      toast.error('Update failed', { description: String(err?.message || err) });
     } finally {
       setSaving(false);
     }

@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { toast } from 'sonner';
 
 const Navbar = () => {
   const { theme, toggleTheme } = useTheme();
@@ -41,8 +42,9 @@ const Navbar = () => {
       localStorage.removeItem('user');
       localStorage.removeItem('role');
       localStorage.removeItem('isVerified');
+      toast.success('Logged out', { description: 'You have been signed out.' });
     } catch {}
-    navigate('/');
+    navigate('/login');
   };
 
   return (

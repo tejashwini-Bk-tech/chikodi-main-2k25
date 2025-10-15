@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
 const ForgotPassword = () => {
@@ -18,17 +18,22 @@ const ForgotPassword = () => {
 
   const handleSendReset = async (e) => {
     e.preventDefault();
-    const emailTrim = email.trim();
-    if (!emailTrim) return;
+    const emailTrim = (email || '').trim();
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim);
+    if (!emailValid) {
+      toast.error('Invalid email', { description: 'Please enter a valid email address.' });
+      return;
+    }
+    toast('Sending reset email...');
     setSending(true);
     try {
       const redirectTo = `${window.location.origin}/auth/callback?type=recovery`;
       const { error } = await supabase.auth.resetPasswordForEmail(emailTrim, { redirectTo });
       if (error) throw error;
-      toast({ title: 'Password reset email sent', description: `Check ${emailTrim} for the link` });
+      toast.success('Password reset email sent', { description: `Check ${emailTrim} for the link` });
       setTimeout(() => navigate('/login'), 800);
     } catch (err) {
-      toast({ title: 'Failed to send email', description: String(err?.message || err), variant: 'destructive' });
+      toast.error('Failed to send email', { description: String(err?.message || err) });
     } finally {
       setSending(false);
     }

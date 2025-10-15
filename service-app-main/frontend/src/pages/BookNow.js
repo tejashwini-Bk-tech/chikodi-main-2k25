@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Calendar } from '../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 
 const BookNow = () => {
   const { t } = useLanguage();
@@ -34,10 +34,19 @@ const BookNow = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    toast({
-      title: "Booking Request Sent!",
-      description: `${provider.name} will contact you shortly to confirm`,
-    });
+    if (!date) {
+      toast.error('Date required', { description: 'Please select a booking date.' });
+      return;
+    }
+    if (!time) {
+      toast.error('Time required', { description: 'Please select a time slot.' });
+      return;
+    }
+    if (!address.trim()) {
+      toast.error('Address required', { description: 'Please enter your service address.' });
+      return;
+    }
+    toast.success('Booking Request Sent!', { description: `${provider.name} will contact you shortly to confirm` });
     setTimeout(() => navigate('/profile'), 1500);
   };
 

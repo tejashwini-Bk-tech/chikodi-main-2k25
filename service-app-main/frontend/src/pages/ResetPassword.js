@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock } from 'lucide-react';
+import { Lock, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
 const ResetPassword = () => {
@@ -13,25 +13,28 @@ const ResetPassword = () => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    toast('Updating password...');
     if (!password || password.length < 8) {
-      toast({ title: 'Weak password', description: 'Use at least 8 characters' });
+      toast.error('Weak password', { description: 'Use at least 8 characters' });
       return;
     }
     if (password !== confirm) {
-      toast({ title: 'Passwords do not match', description: 'Please re-enter' });
+      toast.error('Passwords do not match', { description: 'Please re-enter' });
       return;
     }
     setSaving(true);
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      toast({ title: 'Password updated', description: 'You can now log in with your new password' });
+      toast.success('Password updated', { description: 'You can now log in with your new password' });
       setTimeout(() => navigate('/login', { replace: true }), 800);
     } catch (err) {
-      toast({ title: 'Reset failed', description: String(err?.message || err), variant: 'destructive' });
+      toast.error('Reset failed', { description: String(err?.message || err) });
     } finally {
       setSaving(false);
     }
@@ -54,26 +57,46 @@ const ResetPassword = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="password">New Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className="mt-2"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="mt-2 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <Label htmlFor="confirm">Confirm Password</Label>
-                <Input
-                  id="confirm"
-                  type="password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  className="mt-2"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="confirm"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    className="mt-2 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowConfirm((s) => !s)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
+                  >
+                    {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
               <Button type="submit" disabled={saving} className="w-full">
                 {saving ? 'Saving...' : 'Update Password'}
