@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { User, Mail, Phone, MapPin, Calendar, LogOut, Edit } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Badge } from '../components/ui/badge';
@@ -14,6 +16,9 @@ const UserProfile = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ fullName: '', avatarUrl: '' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -28,7 +33,7 @@ const UserProfile = () => {
       // Fetch profile (full_name, phone, role)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, phone, role')
+        .select('full_name, phone, role, avatar_url')
         .eq('id', supaUser.id)
         .maybeSingle();
 
@@ -40,7 +45,9 @@ const UserProfile = () => {
         fullName: profile?.full_name || localFallback.fullName || 'User',
         phone: profile?.phone || '',
         role: profile?.role || localStorage.getItem('role') || 'user',
+        avatarUrl: profile?.avatar_url || '',
       });
+      setForm({ fullName: profile?.full_name || localFallback.fullName || '', avatarUrl: profile?.avatar_url || '' });
     };
     load();
     return () => { active = false; };
@@ -60,6 +67,36 @@ const UserProfile = () => {
     navigate('/login');
   };
 
+  const handleSave = async (e) => {
+    e?.preventDefault?.();
+    if (!user?.id) return;
+    const full_name = (form.fullName || '').trim();
+    const avatar_url = (form.avatarUrl || '').trim();
+    if (!full_name) {
+      toast({ title: 'Name required', description: 'Please enter your full name' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name, avatar_url })
+        .eq('id', user.id);
+      if (error) throw error;
+      // Update local UI and storage
+      const updated = { ...user, fullName: full_name, avatarUrl: avatar_url };
+      setUser(updated);
+      const local = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...local, fullName: full_name }));
+      toast({ title: 'Profile updated', description: 'Your changes have been saved' });
+      setEditing(false);
+    } catch (err) {
+      toast({ title: 'Update failed', description: String(err?.message || err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -77,7 +114,7 @@ const UserProfile = () => {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center text-center">
                 <Avatar className="w-24 h-24 mb-4 ring-4 ring-blue-600">
-                  <AvatarImage src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop" />
+                  <AvatarImage src={user.avatarUrl || ''} />
                   <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
                     {user.fullName?.[0] || 'U'}
                   </AvatarFallback>
@@ -89,10 +126,10 @@ const UserProfile = () => {
                 <Button
                   variant="ghost"
                   className="mt-4 w-full"
-                  onClick={() => toast({ title: "Coming Soon", description: "Edit profile feature" })}
+                  onClick={() => setEditing((v) => !v)}
                 >
                   <Edit className="w-4 h-4 mr-2" />
-                  Edit Profile
+                  {editing ? 'Close Editor' : 'Edit Profile'}
                 </Button>
               </div>
             </CardContent>
@@ -104,6 +141,40 @@ const UserProfile = () => {
               <CardTitle className="text-2xl">Account Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {editing && (
+                <form onSubmit={handleSave} className="space-y-4 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input
+                      id="fullName"
+                      value={form.fullName}
+                      onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
+                      placeholder="Enter your full name"
+                      className="mt-2"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
+                    <Input
+                      id="avatarUrl"
+                      value={form.avatarUrl}
+                      onChange={(e) => setForm((f) => ({ ...f, avatarUrl: e.target.value }))}
+                      placeholder="https://..."
+                      className="mt-2"
+                    />
+                    {/* By default, leave avatar empty. No default image will be set. */}
+                  </div>
+                  <div className="flex gap-3">
+                    <Button type="submit" disabled={saving} className="min-w-24">
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => { setEditing(false); setForm({ fullName: user.fullName || '', avatarUrl: user.avatarUrl || '' }); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
