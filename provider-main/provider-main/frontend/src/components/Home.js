@@ -78,7 +78,7 @@ function Home() {
             <CardContent className="flex justify-center">
               <Button
                 className="btn-primary h-12 px-8"
-                onClick={() => navigate('/register')}
+                onClick={() => navigate('/privacy')}
                 data-testid="collab-with-us-btn"
               >
                 Collab with us
