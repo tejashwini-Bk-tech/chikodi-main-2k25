@@ -25,6 +25,50 @@ const UserProfile = () => {
   const [providersById, setProvidersById] = useState({});
   const [mapForProviderId, setMapForProviderId] = useState(null);
   const [userMapLocation, setUserMapLocation] = useState(null);
+  const [messageByBooking, setMessageByBooking] = useState({});
+
+  const sendMessage = async (booking) => {
+    const text = (messageByBooking[booking.id] || '').trim();
+    if (!text) return;
+    let uid = user?.id;
+    if (!uid) {
+      try { const { data: s } = await supabase.auth.getSession(); uid = s?.session?.user?.id || null; } catch {}
+    }
+    if (!uid) { toast.error('Not logged in'); return; }
+    const base = { recipient_id: booking.provider_id, sender_id: uid };
+    try {
+      // First try with 'content'
+      let { error } = await supabase.from('messages').insert({ ...base, content: text });
+      if (error) {
+        console.error('Supabase messages insert error:', error);
+        const msg = String(error.message || '').toLowerCase();
+        if (msg.includes('column') && msg.includes('sender_id')) {
+          // Retry without sender_id if column not present
+          let { error: e2 } = await supabase.from('messages').insert({ recipient_id: booking.provider_id, content: text });
+          if (!e2) { toast.success('Message sent'); setMessageByBooking((m) => ({ ...m, [booking.id]: '' })); return; }
+          error = e2;
+        }
+        if (String(error.message || '').toLowerCase().includes('column') && String(error.message || '').toLowerCase().includes('content')) {
+          // Retry with alternate column name 'message'
+          const retry = await supabase.from('messages').insert({ recipient_id: booking.provider_id, sender_id: uid, message: text });
+          if (retry.error) throw retry.error;
+        } else if (msg.includes('relation') && msg.includes('messages')) {
+          toast.error('Messages table missing', { description: 'Please create table public.messages (booking_id, provider_id, user_id, content/text, created_at).' });
+          return;
+        } else if (msg.includes('rls') || msg.includes('not authorized')) {
+          toast.error('Not authorized', { description: 'Check Supabase RLS policies for inserting into messages.' });
+          return;
+        } else {
+          throw error;
+        }
+      }
+      toast.success('Message sent');
+      setMessageByBooking((m) => ({ ...m, [booking.id]: '' }));
+    } catch (e) {
+      console.error('Message send failed:', e);
+      toast.error(e?.message || 'Failed to send message');
+    }
+  };
 
   const getGeolocation = () => new Promise((resolve) => {
     if (!('geolocation' in navigator)) return resolve(null);
@@ -551,9 +595,18 @@ const UserProfile = () => {
                             <MapPin className="w-3 h-3" />
                           </Badge>
                         </button>
-                        <Button variant="outline" onClick={() => navigate(`/book/${b.provider_id}`)}>Details</Button>
                       </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Message provider…"
+                        value={messageByBooking[b.id] || ''}
+                        onChange={(e) => setMessageByBooking((m) => ({ ...m, [b.id]: e.target.value }))}
+                        className="flex-1 border rounded px-3 py-2 text-sm"
+                      />
+                      <Button variant="outline" onClick={() => sendMessage(b)}>Send</Button>
                     </div>
+                  </div>
                   );
                 })}
               </div>
