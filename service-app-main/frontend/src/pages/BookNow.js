@@ -262,25 +262,7 @@ const BookNow = () => {
                   </Button>
                 )}
 
-                {/* Message box after booking/request */}
-                {bookingStatus !== 'idle' && (
-                  <div className="space-y-3 animate-in fade-in duration-500">
-                    <Label htmlFor="messageBox">Message Provider</Label>
-                    <Textarea
-                      id="messageBox"
-                      placeholder={bookingStatus === 'booked' ? 'Send a message with any details for the visit…' : 'Send a message about your requested timing…'}
-                      value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
-                      className="min-h-24"
-                    />
-                    <div className="flex justify-end">
-                      <Button type="button" onClick={() => { toast.success('Message sent'); setMessageText(''); }}>
-                        Send Message
-                      </Button>
-                    </div>
-                    
-                  </div>
-                )}
+                {/* Messaging moved to UserProfile pending bookings */}
               </form>
             </CardContent>
           </Card>
