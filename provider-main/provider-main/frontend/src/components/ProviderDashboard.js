@@ -5,13 +5,17 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
-import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode } from 'lucide-react';
+import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 const ProviderDashboard = () => {
   const { providerId } = useParams();
   const [provider, setProvider] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTogglingAvail, setIsTogglingAvail] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifItems, setNotifItems] = useState([]);
 
   useEffect(() => {
     fetchProviderData();
@@ -31,6 +35,75 @@ const ProviderDashboard = () => {
       toast.error('Failed to load provider data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Realtime notifications for bookings
+  useEffect(() => {
+    if (!provider?.provider_id) return;
+    let channel;
+    let cancelled = false;
+    const refreshCount = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('id, status')
+          .eq('provider_id', provider.provider_id)
+          .in('status', ['booked', 'requested']);
+        if (!error && !cancelled) setNotifCount((data || []).length);
+      } catch (_) {}
+    };
+    refreshCount();
+    try {
+      channel = supabase
+        .channel(`realtime-bookings-${provider.provider_id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, async (payload) => {
+          // Safest: recompute count on any change involving this provider
+          await refreshCount();
+        })
+        .subscribe();
+    } catch (_) {}
+    return () => {
+      cancelled = true;
+      try { channel && supabase.removeChannel(channel); } catch (_) {}
+    };
+  }, [provider?.provider_id]);
+
+  const loadLatestBookings = async () => {
+    if (!provider?.provider_id) return;
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('id, user_id, status, address, notes, user_location, requested_at, scheduled_date, scheduled_time')
+        .eq('provider_id', provider.provider_id)
+        .in('status', ['booked','requested'])
+        .order('requested_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setNotifItems(data || []);
+    } catch (e) {
+      console.error('Failed to load bookings', e);
+      toast.error('Failed to load notifications');
+    }
+  };
+
+  const toggleAvailability = async () => {
+    if (!provider) return;
+    try {
+      setIsTogglingAvail(true);
+      const next = !Boolean(provider.is_available);
+      const { error } = await supabase
+        .from('providers')
+        .update({ is_available: next })
+        .eq('provider_id', provider.provider_id);
+      if (error) throw error;
+      setProvider(prev => prev ? { ...prev, is_available: next } : prev);
+      toast.success(next ? 'You are now Available' : 'You are now Busy');
+    } catch (e) {
+      console.error('Failed to toggle availability', e);
+      toast.error('Failed to update availability');
+    } finally {
+      setIsTogglingAvail(false);
     }
   };
 
@@ -101,7 +174,67 @@ const ProviderDashboard = () => {
               ✓ Verified Provider
             </Badge>
           )}
+
+          <div className="mt-3 flex justify-center">
+            <button type="button" onClick={() => { setNotifOpen(v => !v); if (!notifOpen) loadLatestBookings(); }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
+              <Bell className="h-4 w-4 text-gray-700" />
+              <span className="text-sm text-gray-700">Notifications</span>
+              {notifCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-red-600 text-white">
+                  {notifCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
+
+        {notifOpen && (
+          <div className="max-w-6xl mx-auto mb-6">
+            <Card className="border-0 shadow-2xl">
+              <CardHeader>
+                <CardTitle>Recent Bookings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {notifItems.length === 0 ? (
+                  <div className="text-sm text-gray-600">No bookings yet.</div>
+                ) : (
+                  <div className="divide-y">
+                    {notifItems.map((b) => {
+                      const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
+                      const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
+                      const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
+                      return (
+                        <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                                {b.status === 'booked' ? 'Booked' : 'Requested'}
+                              </Badge>
+                              <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
+                            </div>
+                            <div className="mt-1 text-sm text-gray-800 truncate">User: {b.user_id || 'N/A'}</div>
+                            <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
+                            {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                            {(b.scheduled_date || b.scheduled_time) && (
+                              <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                            )}
+                          </div>
+                          <div className="shrink-0 flex items-center gap-2">
+                            {mapsUrl ? (
+                              <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Open in Maps</a>
+                            ) : (
+                              <span className="text-xs text-gray-500">No location</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* ID Card */}
@@ -172,6 +305,32 @@ const ProviderDashboard = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Availability */}
+            <Card className="glass-card border-0 shadow-2xl">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  {provider.is_available ? (
+                    <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                  ) : (
+                    <AlertTriangle className="h-6 w-6 text-amber-600" />
+                  )}
+                  <span>Availability</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-700">Current status:</span>
+                    <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                      {provider.is_available ? 'Available' : 'Busy'}
+                    </Badge>
+                  </div>
+                  <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
+                    {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
             {/* Wallet */}
             <Card className="glass-card border-0 shadow-2xl">
               <CardHeader>

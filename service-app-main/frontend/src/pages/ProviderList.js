@@ -30,7 +30,7 @@ const ProviderList = () => {
       try {
         const { data, error } = await supabase
           .from('providers')
-          .select('provider_id, professions, is_verified, location, documents, created_at')
+          .select('provider_id, professions, is_verified, is_available, location, documents, created_at')
           .order('created_at', { ascending: false });
         if (error) throw error;
         const items = data || [];
@@ -48,6 +48,7 @@ const ProviderList = () => {
             id: p.provider_id,
             professions: Array.isArray(p.professions) ? p.professions : [],
             is_verified: !!p.is_verified,
+            is_available: !!p.is_available,
             location: p.location || null,
             image: imageUrl,
             created_at: p.created_at
@@ -169,7 +170,12 @@ const ProviderList = () => {
                         <CheckCircle2 className="w-5 h-5 text-blue-600" />
                       )}
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.id}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.id}</p>
+                      <Badge className={provider.is_available ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'}>
+                        {provider.is_available ? 'Available' : 'Busy'}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
 

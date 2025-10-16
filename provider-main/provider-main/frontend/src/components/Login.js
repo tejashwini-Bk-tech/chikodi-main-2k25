@@ -42,8 +42,23 @@ const Login = () => {
       const { data, error } = await supabase.auth.signInWithPassword({ email: e, password: p });
       if (error) throw error;
       toast.success('Logged in');
-      const redirect = location.state?.redirect || '/register/step/1';
-      navigate(redirect, { replace: true });
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user || null;
+        if (user) {
+          const { data: prov, error: provErr } = await supabase
+            .from('providers')
+            .select('provider_id, user_id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (!provErr && prov?.provider_id) {
+            navigate(`/dashboard/${prov.provider_id}`, { replace: true });
+            return;
+          }
+        }
+      } catch (_) {}
+      const fallback = location.state?.redirect || '/register/step/1';
+      navigate(fallback, { replace: true });
     } catch (err) {
       toast.error(err?.message || 'Login failed');
     } finally {
@@ -64,8 +79,23 @@ const Login = () => {
         toast.success('Account created. Please check your email to confirm.');
       } else {
         toast.success('Account created and logged in');
-        const redirect = location.state?.redirect || '/register/step/1';
-        navigate(redirect, { replace: true });
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const user = sessionData?.session?.user || null;
+          if (user) {
+            const { data: prov, error: provErr } = await supabase
+              .from('providers')
+              .select('provider_id, user_id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (!provErr && prov?.provider_id) {
+              navigate(`/dashboard/${prov.provider_id}`, { replace: true });
+              return;
+            }
+          }
+        } catch (_) {}
+        const fallback = location.state?.redirect || '/register/step/1';
+        navigate(fallback, { replace: true });
       }
     } catch (err) {
       toast.error(err?.message || 'Sign up failed');

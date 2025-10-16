@@ -1,10 +1,31 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { supabase } from '../lib/supabaseClient';
 
 function Home() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user || null;
+        if (!user) return;
+        const { data: p, error } = await supabase
+          .from('providers')
+          .select('provider_id, user_id, is_available')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!cancelled && !error && p?.provider_id && p.is_available) {
+          navigate(`/dashboard/${p.provider_id}`, { replace: true });
+        }
+      } catch (_) {}
+    })();
+    return () => { cancelled = true; };
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-12 px-6">
