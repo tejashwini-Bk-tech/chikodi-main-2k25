@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, BarChart3, Users, User } from 'lucide-react';
+import { MapPin, BarChart3, Users, User, Bell } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -20,7 +20,9 @@ const Dashboard = () => {
   const [leafletReady, setLeafletReady] = useState(false);
   const mapEl = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef({});
+  const [markersRef] = [useRef({})];
+  const [completedCount, setCompletedCount] = useState(0);
+  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
     const fetchProvider = async () => {
@@ -28,6 +30,7 @@ const Dashboard = () => {
         setProviderStatus('loading');
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user || null;
+        setUserId(user?.id || null);
         if (!user?.id) {
           setProvider(null);
           setProviderStatus('unauth');
@@ -49,6 +52,33 @@ const Dashboard = () => {
     };
     fetchProvider();
   }, []);
+
+  // Realtime: completed bookings for this user
+  useEffect(() => {
+    if (!userId) return;
+    let channel;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('status', 'completed');
+        if (!error && !cancelled) setCompletedCount((data || []).length);
+      } catch (_) {}
+    };
+    refresh();
+    try {
+      channel = supabase
+        .channel(`realtime-user-completed-${userId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${userId}` }, async () => {
+          await refresh();
+        })
+        .subscribe();
+    } catch (_) {}
+    return () => { try { channel && supabase.removeChannel(channel); } catch (_) {} cancelled = true; };
+  }, [userId]);
 
   // Load saved user location (set on the Geolocation page)
   useEffect(() => {
@@ -256,7 +286,20 @@ const Dashboard = () => {
         <div className="mb-8 p-8 rounded-3xl bg-gradient-to-r from-blue-700 via-cyan-600 to-emerald-500 text-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-700">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight drop-shadow-sm">NEXORA</h1>
-            <span className="text-xs uppercase tracking-widest text-white/80">Service Platform</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs uppercase tracking-widest text-white/80">Service Platform</span>
+              {userId && (
+                <button onClick={() => navigate('/payments')} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition">
+                  <Bell className="h-4 w-4" />
+                  <span className="text-xs">Completed</span>
+                  {completedCount > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-white text-blue-700">
+                      {completedCount}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
           <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide">you name it, we'll provide it</p>
         </div>
