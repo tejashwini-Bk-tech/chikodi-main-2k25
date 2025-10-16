@@ -35,7 +35,7 @@ const UserProfile = () => {
       try { const { data: s } = await supabase.auth.getSession(); uid = s?.session?.user?.id || null; } catch {}
     }
     if (!uid) { toast.error('Not logged in'); return; }
-    const base = { recipient_id: booking.provider_id, sender_id: uid };
+    const base = { recipient_id: booking.provider_id, sender_id: uid, booking_id: booking.id };
     try {
       // First try with 'content'
       let { error } = await supabase.from('messages').insert({ ...base, content: text });
@@ -44,13 +44,13 @@ const UserProfile = () => {
         const msg = String(error.message || '').toLowerCase();
         if (msg.includes('column') && msg.includes('sender_id')) {
           // Retry without sender_id if column not present
-          let { error: e2 } = await supabase.from('messages').insert({ recipient_id: booking.provider_id, content: text });
+          let { error: e2 } = await supabase.from('messages').insert({ recipient_id: booking.provider_id, booking_id: booking.id, content: text });
           if (!e2) { toast.success('Message sent'); setMessageByBooking((m) => ({ ...m, [booking.id]: '' })); return; }
           error = e2;
         }
         if (String(error.message || '').toLowerCase().includes('column') && String(error.message || '').toLowerCase().includes('content')) {
           // Retry with alternate column name 'message'
-          const retry = await supabase.from('messages').insert({ recipient_id: booking.provider_id, sender_id: uid, message: text });
+          const retry = await supabase.from('messages').insert({ recipient_id: booking.provider_id, sender_id: uid, booking_id: booking.id, message: text });
           if (retry.error) throw retry.error;
         } else if (msg.includes('relation') && msg.includes('messages')) {
           toast.error('Messages table missing', { description: 'Please create table public.messages (booking_id, provider_id, user_id, content/text, created_at).' });
