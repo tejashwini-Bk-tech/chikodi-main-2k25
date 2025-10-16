@@ -10,6 +10,8 @@ const Payments = () => {
   const [bookings, setBookings] = useState([]); // completed bookings for this user
   const [payments, setPayments] = useState([]); // existing payments by this user
   const [loading, setLoading] = useState(false);
+  const [reviewsByBooking, setReviewsByBooking] = useState({});
+  const [ratingModal, setRatingModal] = useState({ open: false, booking: null, rating: 5, comment: '' });
 
   useEffect(() => {
     const init = async () => {
@@ -17,31 +19,10 @@ const Payments = () => {
       const uid = s?.session?.user?.id || null;
       setUserId(uid);
     };
-
-  const payCash = async (booking, amountInRupees) => {
-    try {
-      const amt = Number(amountInRupees);
-      if (!Number.isFinite(amt) || amt <= 0) { toast.error('Enter a valid amount'); return; }
-      const payload = {
-        booking_id: booking.id,
-        provider_id: booking.provider_id,
-        user_id: userId,
-        amount: amt,
-        currency: 'INR',
-        paid_at: new Date().toISOString(),
-        method: 'cash',
-      };
-      const { error } = await supabase.from('payments').insert(payload);
-      if (error) throw new Error(error.message);
-      toast.success('Cash payment recorded');
-    } catch (e) {
-      toast.error(e?.message || 'Failed to record cash payment');
-    }
-  };
     init();
   }, []);
 
-  // Load completed bookings and payments; subscribe to realtime changes
+  // Load completed bookings and payments and reviews; subscribe to realtime changes
   useEffect(() => {
     if (!userId) return;
     let ch1, ch2;
@@ -55,6 +36,22 @@ const Payments = () => {
         if (!cancelled) {
           setBookings(b || []);
           setPayments(p || []);
+        }
+        // load reviews for these bookings
+        const ids = (b || []).map(x => x.id);
+        if (ids.length) {
+          const { data: revs } = await supabase
+            .from('reviews')
+            .select('id, booking_id, rating')
+            .eq('user_id', userId)
+            .in('booking_id', ids);
+          if (!cancelled) {
+            const map = {};
+            for (const r of revs || []) map[r.booking_id] = r;
+            setReviewsByBooking(map);
+          }
+        } else {
+          if (!cancelled) setReviewsByBooking({});
         }
       } catch (_) {}
     };
@@ -81,6 +78,27 @@ const Payments = () => {
   }, [payments]);
 
   const awaiting = useMemo(() => bookings.filter(b => !paidByBooking.get(b.id)), [bookings, paidByBooking]);
+
+  const payCash = async (booking, amountInRupees) => {
+    try {
+      const amt = Number(amountInRupees);
+      if (!Number.isFinite(amt) || amt <= 0) { toast.error('Enter a valid amount'); return; }
+      const payload = {
+        booking_id: booking.id,
+        provider_id: booking.provider_id,
+        user_id: userId,
+        amount: amt,
+        currency: 'INR',
+        paid_at: new Date().toISOString(),
+        method: 'cash',
+      };
+      const { error } = await supabase.from('payments').insert(payload);
+      if (error) throw new Error(error.message);
+      toast.success('Cash payment recorded');
+    } catch (e) {
+      toast.error(e?.message || 'Failed to record cash payment');
+    }
+  };
 
   const startPayment = async (booking, amountInRupees) => {
     try {
@@ -135,7 +153,15 @@ const Payments = () => {
             ) : (
               <div className="divide-y">
                 {awaiting.map((b) => (
-                  <BookingPayRow key={b.id} booking={b} onPay={startPayment} onCash={payCash} loading={loading} />
+                  <BookingPayRow
+                    key={b.id}
+                    booking={b}
+                    onPay={startPayment}
+                    onCash={payCash}
+                    loading={loading}
+                    reviewed={!!reviewsByBooking[b.id]}
+                    onRate={() => setRatingModal({ open: true, booking: b, rating: 5, comment: '' })}
+                  />
                 ))}
               </div>
             )}
@@ -169,12 +195,54 @@ const Payments = () => {
             )}
           </CardContent>
         </Card>
+
       </div>
+      {/* Rating Modal */}
+      {ratingModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setRatingModal({ open: false, booking: null, rating: 5, comment: '' })} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-[95vw] max-w-md p-4 z-10">
+            <div className="text-lg font-semibold mb-2">Rate Your Experience</div>
+            <div className="text-xs text-slate-600 mb-3">Booking ID: {ratingModal.booking?.id}</div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm">Rating:</span>
+              <input type="number" min="1" max="5" value={ratingModal.rating} onChange={(e) => setRatingModal((m) => ({ ...m, rating: Number(e.target.value) }))} className="w-16 border rounded px-2 py-1 text-sm" />
+            </div>
+            <textarea
+              placeholder="Write a short review (optional)"
+              value={ratingModal.comment}
+              onChange={(e) => setRatingModal((m) => ({ ...m, comment: e.target.value }))}
+              className="w-full border rounded p-2 text-sm min-h-24"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRatingModal({ open: false, booking: null, rating: 5, comment: '' })}>Cancel</Button>
+              <Button onClick={async () => {
+                try {
+                  if (!userId || !ratingModal.booking?.id) return;
+                  const payload = {
+                    provider_id: ratingModal.booking.provider_id,
+                    booking_id: ratingModal.booking.id,
+                    user_id: userId,
+                    rating: Math.min(5, Math.max(1, Number(ratingModal.rating) || 5)),
+                    comment: ratingModal.comment?.trim() || null,
+                  };
+                  const { error } = await supabase.from('reviews').insert(payload);
+                  if (error) throw new Error(error.message);
+                  toast.success('Thank you for your review!');
+                  setRatingModal({ open: false, booking: null, rating: 5, comment: '' });
+                } catch (e) {
+                  toast.error(e?.message || 'Failed to submit review');
+                }
+              }}>Submit</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const BookingPayRow = ({ booking, onPay, onCash, loading }) => {
+const BookingPayRow = ({ booking, onPay, onCash, loading, reviewed, onRate }) => {
   const [amount, setAmount] = useState('');
   return (
     <div className="py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -184,7 +252,6 @@ const BookingPayRow = ({ booking, onPay, onCash, loading }) => {
           <div className="text-xs text-slate-600">When: {booking.scheduled_date || ''} {booking.scheduled_time || ''}</div>
         ) : null}
         {booking.address && <div className="text-xs text-slate-600">Address: {booking.address}</div>}
-        {booking.notes && <div className="text-xs text-slate-500">Notes: {booking.notes}</div>}
       </div>
       <div className="shrink-0 flex items-center gap-2">
         <input
@@ -202,6 +269,11 @@ const BookingPayRow = ({ booking, onPay, onCash, loading }) => {
         <Button disabled={loading} variant="outline" onClick={() => onCash(booking, amount)} className="px-4">
           Cash
         </Button>
+        {!reviewed && (
+          <Button disabled={loading} variant="outline" onClick={onRate} className="px-4">
+            Rate
+          </Button>
+        )}
       </div>
     </div>
   );
