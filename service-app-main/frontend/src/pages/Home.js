@@ -130,7 +130,7 @@ const Home = () => {
       <section className="py-24 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 bg-gradient-to-r from-blue-700 via-cyan-500 to-indigo-600 bg-clip-text text-transparent">
-            NEXORA Services, On Demand
+            FIXORA Services, On Demand
           </h1>
           <p className="text-lg md:text-2xl text-slate-600 dark:text-slate-300 mb-10 max-w-3xl mx-auto">
             Discover trusted providers, track live locations, view real-time analytics, and chat with AI support.
@@ -249,7 +249,7 @@ const Home = () => {
           <Card className="border-0 shadow hover:shadow-md transition">
             <CardHeader>
               <CardTitle>AI Chatbot</CardTitle>
-              <CardDescription>Ask NEXORA anything about services, pricing, and bookings</CardDescription>
+              <CardDescription>Ask FIXORA anything about services, pricing, and bookings</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-sm text-slate-600 dark:text-slate-300">Chat is available on every page in the bottom-right.</div>
