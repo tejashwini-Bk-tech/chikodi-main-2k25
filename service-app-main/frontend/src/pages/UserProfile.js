@@ -19,6 +19,36 @@ const UserProfile = () => {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ fullName: '', avatarUrl: '' });
   const [saving, setSaving] = useState(false);
+  const [latestBooking, setLatestBooking] = useState(null);
+  const [latestProvider, setLatestProvider] = useState(null);
+  const [pendingBookings, setPendingBookings] = useState([]);
+  const [providersById, setProvidersById] = useState({});
+  const [mapForProviderId, setMapForProviderId] = useState(null);
+  const [userMapLocation, setUserMapLocation] = useState(null);
+
+  const getGeolocation = () => new Promise((resolve) => {
+    if (!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords || {};
+        resolve({ lat: latitude, lng: longitude });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  });
+
+  const haversineKm = (a, b) => {
+    if (!a || !b) return null;
+    const R = 6371;
+    const toRad = (x) => (x * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
 
   useEffect(() => {
     let active = true;
@@ -80,6 +110,147 @@ const UserProfile = () => {
       window.removeEventListener('profile-updated', onProfileUpdated);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLatest = async () => {
+      try {
+        if (!user?.id) return;
+        const { data: bookings } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('requested_at', { ascending: false })
+          .limit(1);
+        const bk = bookings?.[0] || null;
+        if (cancelled) return;
+        setLatestBooking(bk);
+        if (bk?.provider_id) {
+          const { data: prov } = await supabase
+            .from('providers')
+            .select('provider_id, professions, location, last_location_at')
+            .eq('provider_id', bk.provider_id)
+            .maybeSingle();
+          if (!cancelled) setLatestProvider(prov || null);
+        } else {
+          setLatestProvider(null);
+        }
+      } catch (_) {}
+    };
+    loadLatest();
+    try {
+      const ch = user?.id ? supabase
+        .channel(`rt-user-latest-booking-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${user.id}` }, loadLatest)
+        .subscribe() : null;
+      return () => { cancelled = true; if (ch) try { supabase.removeChannel(ch); } catch (_) {} };
+    } catch (_) {
+      return () => { cancelled = true; };
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!latestBooking?.provider_id) return;
+    let cancelled = false;
+    const subscribe = () => {
+      try {
+        const ch = supabase
+          .channel(`rt-provider-${latestBooking.provider_id}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'providers', filter: `provider_id=eq.${latestBooking.provider_id}` }, async () => {
+            try {
+              const { data: prov } = await supabase
+                .from('providers')
+                .select('provider_id, professions, location, last_location_at')
+                .eq('provider_id', latestBooking.provider_id)
+                .maybeSingle();
+              if (!cancelled) setLatestProvider(prov || null);
+            } catch (_) {}
+          })
+          .subscribe();
+        return ch;
+      } catch (_) {
+        return null;
+      }
+    };
+    const ch = subscribe();
+    return () => {
+      cancelled = true;
+      if (ch) try { supabase.removeChannel(ch); } catch (_) {}
+    };
+  }, [latestBooking?.provider_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPending = async () => {
+      try {
+        if (!user?.id) return;
+        const { data: books } = await supabase
+          .from('bookings')
+          .select('id, provider_id, status, address, notes, scheduled_date, scheduled_time, requested_at')
+          .eq('user_id', user.id)
+          .in('status', ['booked', 'requested'])
+          .order('requested_at', { ascending: false });
+        if (cancelled) return;
+        setPendingBookings(books || []);
+        const ids = Array.from(new Set((books || []).map(b => b.provider_id).filter(Boolean)));
+        if (ids.length) {
+          const { data: provs } = await supabase
+            .from('providers')
+            .select('provider_id, professions, location, last_location_at, is_available')
+            .in('provider_id', ids);
+          if (!cancelled) {
+            const map = {};
+            for (const p of provs || []) map[p.provider_id] = p;
+            setProvidersById(map);
+          }
+        } else {
+          setProvidersById({});
+        }
+      } catch (_) {}
+    };
+    loadPending();
+    // Realtime subscription to user's bookings changes
+    let chB = null;
+    try {
+      if (user?.id) {
+        chB = supabase
+          .channel(`rt-user-pending-bookings-${user.id}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${user.id}` }, loadPending)
+          .subscribe();
+      }
+    } catch (_) {}
+    return () => { cancelled = true; if (chB) try { supabase.removeChannel(chB); } catch (_) {} };
+  }, [user?.id]);
+
+  useEffect(() => {
+    // Subscribe to providers shown in pending list for live location
+    const ids = Array.from(new Set(pendingBookings.map(b => b.provider_id).filter(Boolean)));
+    const channels = [];
+    const onUpdate = async (pid) => {
+      try {
+        const { data: prov } = await supabase
+          .from('providers')
+          .select('provider_id, professions, location, last_location_at, is_available')
+          .eq('provider_id', pid)
+          .maybeSingle();
+        setProvidersById(prev => ({ ...prev, [pid]: prov || prev[pid] }));
+      } catch (_) {}
+    };
+    try {
+      for (const pid of ids) {
+        const ch = supabase
+          .channel(`rt-provider-pending-${pid}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'providers', filter: `provider_id=eq.${pid}` }, () => onUpdate(pid))
+          .subscribe();
+        channels.push(ch);
+      }
+    } catch (_) {}
+    return () => {
+      for (const ch of channels) {
+        try { supabase.removeChannel(ch); } catch (_) {}
+      }
+    };
+  }, [pendingBookings]);
 
   const handleLogout = async () => {
     try {
@@ -277,18 +448,177 @@ const UserProfile = () => {
             <CardTitle className="text-2xl">Recent Bookings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-slate-600 dark:text-slate-400">
-              <p>No bookings yet. Start by finding a service provider!</p>
-              <Button
-                onClick={() => navigate('/providers')}
-                className="mt-4 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white"
-              >
-                Browse Providers
-              </Button>
-            </div>
+            {!latestBooking ? (
+              <div className="text-center py-8 text-slate-600 dark:text-slate-400">
+                <p>No bookings yet. Start by finding a service provider!</p>
+                <Button
+                  onClick={() => navigate('/providers')}
+                  className="mt-4 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white"
+                >
+                  Browse Providers
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm text-slate-600">Booking ID</div>
+                    <div className="font-semibold truncate">{latestBooking.id}</div>
+                    {latestBooking.scheduled_date || latestBooking.scheduled_time ? (
+                      <div className="text-xs text-slate-600 mt-1">When: {latestBooking.scheduled_date || ''} {latestBooking.scheduled_time || ''}</div>
+                    ) : null}
+                    {latestBooking.address ? (
+                      <div className="text-xs text-slate-600 mt-1">Address: {latestBooking.address}</div>
+                    ) : null}
+                    {latestBooking.notes ? (
+                      <div className="text-xs text-slate-500 mt-1">Notes: {latestBooking.notes}</div>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      {latestBooking.status || 'unknown'}
+                    </Badge>
+                    {latestProvider && (
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setMapForProviderId(latestBooking.provider_id);
+                            const loc = await getGeolocation();
+                            if (loc) setUserMapLocation(loc);
+                          }}
+                          className="inline-flex"
+                          title="Show live location"
+                        >
+                          <Badge variant="outline" className="flex items-center gap-1 cursor-pointer">
+                            <MapPin className="w-3 h-3" />
+                          </Badge>
+                        </button>
+                      </div>
+                    )}
+                    {latestProvider?.last_location_at ? (
+                      <div className="mt-1 text-[11px] text-slate-500">Updated {new Date(latestProvider.last_location_at).toLocaleString()}</div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <Button variant="outline" onClick={() => navigate(`/book/${latestBooking.provider_id}`)}>
+                    Book Again
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        {/* Pending Bookings */}
+        <Card className="mt-6 border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-1000">
+          <CardHeader>
+            <CardTitle className="text-2xl">Pending Bookings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pendingBookings.length === 0 ? (
+              <div className="text-sm text-slate-600 dark:text-slate-400">No pending bookings.</div>
+            ) : (
+              <div className="divide-y">
+                {pendingBookings.map((b) => {
+                  const p = providersById[b.provider_id];
+                  const hasLoc = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
+                  return (
+                    <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold">Booking ID: {b.id}</div>
+                        <div className="text-xs text-slate-600">Status: {b.status}</div>
+                        {(b.scheduled_date || b.scheduled_time) && (
+                          <div className="text-xs text-slate-600">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                        )}
+                        {b.address && <div className="text-xs text-slate-600">Address: {b.address}</div>}
+                      </div>
+                      <div className="shrink-0 flex items-center gap-2">
+                        <Badge variant={p?.is_available ? 'default' : 'outline'} className={p?.is_available ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : ''}>
+                          {p?.is_available ? 'Available' : 'Busy'}
+                        </Badge>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setMapForProviderId(b.provider_id);
+                            const loc = await getGeolocation();
+                            if (loc) setUserMapLocation(loc);
+                          }}
+                          className="inline-flex"
+                          title="Show live location"
+                        >
+                          <Badge variant="outline" className="flex items-center gap-1 cursor-pointer">
+                            <MapPin className="w-3 h-3" />
+                          </Badge>
+                        </button>
+                        <Button variant="outline" onClick={() => navigate(`/book/${b.provider_id}`)}>Details</Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+      {/* Map Modal */}
+      {mapForProviderId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMapForProviderId(null)} />
+          <div className="relative bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-[95vw] max-w-2xl p-4 z-10">
+            {(() => {
+              const prov = providersById[mapForProviderId] || (latestProvider?.provider_id === mapForProviderId ? latestProvider : null);
+              const hasLoc = typeof prov?.location?.lat === 'number' && typeof prov?.location?.lng === 'number';
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-lg font-semibold">Live Location</div>
+                      <div className="text-xs text-slate-500">Provider ID: {mapForProviderId}</div>
+                    </div>
+                    <Button variant="outline" onClick={() => setMapForProviderId(null)}>Close</Button>
+                  </div>
+                  <div className="w-full h-72 rounded-lg overflow-hidden border">
+                    {hasLoc ? (
+                      <iframe
+                        title="provider-live-map"
+                        width="100%"
+                        height="100%"
+                        style={{ border: 0 }}
+                        loading="lazy"
+                        allowFullScreen
+                        referrerPolicy="no-referrer-when-downgrade"
+                        src={`https://maps.google.com/maps?q=${prov.location.lat},${prov.location.lng}&z=15&output=embed`}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-600">Location not available</div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {hasLoc ? `${prov.location.lat.toFixed(5)}, ${prov.location.lng.toFixed(5)}` : 'N/A'}
+                      </div>
+                      {userMapLocation && hasLoc ? (
+                        <div>
+                          Distance: {(() => {
+                            const d = haversineKm(userMapLocation, { lat: prov.location.lat, lng: prov.location.lng });
+                            return d ? `${d.toFixed(2)} km (approx)` : 'N/A';
+                          })()}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      {prov?.last_location_at ? `Updated ${new Date(prov.last_location_at).toLocaleString()}` : ''}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -17,6 +17,8 @@ const ProviderProfile = () => {
   const { id } = useParams();
   const [provider, setProvider] = useState(null);
   const [status, setStatus] = useState('idle');
+  const [reviews, setReviews] = useState([]);
+  const [avgRating, setAvgRating] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -49,6 +51,36 @@ const ProviderProfile = () => {
     load();
   }, [id, navigate]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadReviews = async () => {
+      try {
+        if (!id) return;
+        const { data } = await supabase
+          .from('reviews')
+          .select('id, user_id, rating, comment, created_at')
+          .eq('provider_id', id)
+          .order('created_at', { ascending: false });
+        if (cancelled) return;
+        setReviews(data || []);
+        const r = data || [];
+        const avg = r.length ? (r.reduce((s, x) => s + (Number(x.rating) || 0), 0) / r.length) : 0;
+        setAvgRating(avg);
+      } catch (_) {}
+    };
+    loadReviews();
+    let ch = null;
+    try {
+      if (id) {
+        ch = supabase
+          .channel(`rt-reviews-${id}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `provider_id=eq.${id}` }, loadReviews)
+          .subscribe();
+      }
+    } catch (_) {}
+    return () => { cancelled = true; if (ch) try { supabase.removeChannel(ch); } catch (_) {} };
+  }, [id]);
+
   if (status === 'loading') return (
     <div className="min-h-screen pt-20 pb-12 px-4"><div className="max-w-6xl mx-auto text-slate-600">Loading…</div></div>
   );
@@ -56,11 +88,13 @@ const ProviderProfile = () => {
     <div className="min-h-screen pt-20 pb-12 px-4"><div className="max-w-6xl mx-auto text-slate-600">Provider not found.</div></div>
   );
 
-  const reviews = [
-    { id: 1, name: 'John Doe', rating: 5, comment: 'Excellent service! Very professional and on time.', date: '2 days ago' },
-    { id: 2, name: 'Jane Smith', rating: 5, comment: 'Great work quality. Highly recommended!', date: '1 week ago' },
-    { id: 3, name: 'Mike Johnson', rating: 4, comment: 'Good service, will hire again.', date: '2 weeks ago' },
-  ];
+  const ratingStars = (n) => (
+    <div className="flex items-center gap-1">
+      {Array.from({ length: Math.round(n || 0) }).map((_, i) => (
+        <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen pt-20 pb-12 px-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -137,36 +171,36 @@ const ProviderProfile = () => {
                 <CardTitle>Customer Reviews</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-5 gap-2 mb-6">
-                  {[5, 4, 3, 2, 1].map((star) => (
-                    <div key={star} className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{star}</span>
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <Progress value={star === 5 ? 85 : star === 4 ? 10 : 5} className="h-2" />
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-slate-600">Average Rating</div>
+                  <div className="flex items-center gap-2">
+                    {ratingStars(avgRating)}
+                    <span className="text-sm font-semibold">{avgRating.toFixed(1)}</span>
+                  </div>
                 </div>
-                {reviews.map((review) => (
-                  <div key={review.id} className="pb-4 border-b border-slate-200 dark:border-slate-700 last:border-0">
-                    <div className="flex items-start gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback>{review.name[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="font-semibold">{review.name}</p>
-                          <span className="text-sm text-slate-600 dark:text-slate-400">{review.date}</span>
+                {reviews.length === 0 ? (
+                  <div className="text-sm text-slate-600">No reviews yet.</div>
+                ) : (
+                  reviews.map((review) => (
+                    <div key={review.id} className="pb-4 border-b border-slate-200 dark:border-slate-700 last:border-0">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback>{(review.user_id || 'U')[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-semibold">User {review.user_id?.slice(0,6) || 'N/A'}</p>
+                            <span className="text-sm text-slate-600 dark:text-slate-400">{review.created_at ? new Date(review.created_at).toLocaleDateString() : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-1 mb-2">
+                            {ratingStars(review.rating)}
+                          </div>
+                          {review.comment && <p className="text-slate-600 dark:text-slate-400">{review.comment}</p>}
                         </div>
-                        <div className="flex items-center gap-1 mb-2">
-                          {[...Array(review.rating)].map((_, i) => (
-                            <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          ))}
-                        </div>
-                        <p className="text-slate-600 dark:text-slate-400">{review.comment}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
           </div>
