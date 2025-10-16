@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar as CalendarIcon, Clock, MapPin, MessageSquare } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, MapPin, MessageSquare, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { mockProviders } from '../utils/mockData';
+import { supabase } from '../lib/supabaseClient';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -18,38 +18,118 @@ const BookNow = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [provider, setProvider] = useState(null);
+  const [status, setStatus] = useState('idle');
   const [date, setDate] = useState();
   const [time, setTime] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [userLocation, setUserLocation] = useState(null);
+  const [bookingStatus, setBookingStatus] = useState('idle'); // idle | booked | requested
+  const [messageText, setMessageText] = useState('');
 
   useEffect(() => {
-    const found = mockProviders.find(p => p.id === id);
-    if (found) {
-      setProvider(found);
-    } else {
-      navigate('/providers');
-    }
+    const load = async () => {
+      try {
+        setStatus('loading');
+        const { data, error } = await supabase
+          .from('providers')
+          .select('*')
+          .eq('provider_id', id)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) { navigate('/providers'); return; }
+        // Signed face photo URL if present
+        let imageUrl = '';
+        const facePath = data?.documents?.face_photo;
+        if (facePath && typeof facePath === 'string') {
+          try {
+            const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
+            if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
+          } catch (_) {}
+        }
+        setProvider({ ...data, imageUrl });
+        setStatus('success');
+      } catch (e) {
+        setStatus('error');
+        navigate('/providers');
+      }
+    };
+    load();
   }, [id, navigate]);
 
-  const handleSubmit = (e) => {
+  const getGeolocation = () => new Promise((resolve) => {
+    if (!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords || {};
+        resolve({ lat: latitude, lng: longitude, accuracy });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  });
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!date) {
-      toast.error('Date required', { description: 'Please select a booking date.' });
-      return;
-    }
-    if (!time) {
-      toast.error('Time required', { description: 'Please select a time slot.' });
-      return;
-    }
     if (!address.trim()) {
       toast.error('Address required', { description: 'Please enter your service address.' });
       return;
     }
-    toast.success('Booking Request Sent!', { description: `${provider.name} will contact you shortly to confirm` });
-    setTimeout(() => navigate('/profile'), 1500);
+    const live = await getGeolocation();
+    if (live) setUserLocation(live);
+    const isAvailable = provider?.is_available ?? provider?.availability_status ?? false;
+    if (!isAvailable) {
+      if (!date) {
+        toast.error('Date required', { description: 'Please select a booking date.' });
+        return;
+      }
+      if (!time) {
+        toast.error('Time required', { description: 'Please select a time slot.' });
+        return;
+      }
+      try {
+        const scheduled_date = date ? new Date(date).toISOString().slice(0,10) : null;
+        const scheduled_time = time || null;
+        let user_id = null;
+        try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch {}
+        const payload = {
+          provider_id: id,
+          user_id,
+          status: 'requested',
+          address,
+          notes,
+          user_location: live || null,
+          scheduled_date,
+          scheduled_time,
+        };
+        await supabase.from('bookings').insert(payload);
+      } catch (_) {}
+      toast.success('Request Sent!', { description: 'The provider will review your requested date/time.' });
+      setBookingStatus('requested');
+      return;
+    }
+    try {
+      let user_id = null;
+      try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch {}
+      const payload = {
+        provider_id: id,
+        user_id,
+        status: 'booked',
+        address,
+        notes,
+        user_location: live || null,
+        scheduled_date: date ? new Date(date).toISOString().slice(0,10) : null,
+        scheduled_time: time || null,
+      };
+      await supabase.from('bookings').insert(payload);
+    } catch (_) {}
+    toast.success('Booked!', { description: 'Your booking is confirmed.' });
+    setBookingStatus('booked');
   };
 
+  if (status === 'loading') return (
+    <div className="min-h-screen pt-20 pb-12 px-4"><div className="max-w-4xl mx-auto text-slate-600">Loading…</div></div>
+  );
   if (!provider) return null;
 
   const timeSlots = [
@@ -65,17 +145,34 @@ const BookNow = () => {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
             Book Service
           </h1>
-          <p className="text-slate-600 dark:text-slate-400">Schedule your appointment with {provider.name}</p>
+          <p className="text-slate-600 dark:text-slate-400">Schedule your appointment with {(provider.professions?.[0] || 'Provider').replace('_',' ')} (ID: {provider.provider_id})</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Booking Form */}
           <Card className="lg:col-span-2 border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-700">
             <CardHeader>
-              <CardTitle>Booking Details</CardTitle>
+              <div className="flex items-center gap-2">
+                {provider?.is_available ?? provider?.availability_status ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                )}
+                <CardTitle>Booking Details</CardTitle>
+              </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                {userLocation && (
+                  <div className="rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-sm p-3">
+                    Captured your live location: {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
+                  </div>
+                )}
+                {!(provider?.is_available ?? provider?.availability_status ?? false) && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+                    Provider is currently busy. Please choose a date and time and we'll notify them to accept.
+                  </div>
+                )}
                 {/* Date Selection */}
                 <div>
                   <Label>Select Date</Label>
@@ -153,13 +250,34 @@ const BookNow = () => {
                 </div>
 
                 {/* Submit Button */}
-                <Button
-                  type="submit"
-                  disabled={!date || !time || !address}
-                  className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 hover:scale-[1.02]"
-                >
-                  Confirm Booking
-                </Button>
+                {bookingStatus === 'idle' && (
+                  <Button
+                    type="submit"
+                    disabled={!(provider?.is_available ?? provider?.availability_status ?? false) ? (!date || !time || !address) : !address}
+                    className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 hover:scale-[1.02]"
+                  >
+                    {(provider?.is_available ?? provider?.availability_status ?? false) ? 'Book Now' : 'Request Booking'}
+                  </Button>
+                )}
+
+                {/* Message box after booking/request */}
+                {bookingStatus !== 'idle' && (
+                  <div className="space-y-3 animate-in fade-in duration-500">
+                    <Label htmlFor="messageBox">Message Provider</Label>
+                    <Textarea
+                      id="messageBox"
+                      placeholder={bookingStatus === 'booked' ? 'Send a message with any details for the visit…' : 'Send a message about your requested timing…'}
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                      className="min-h-24"
+                    />
+                    <div className="flex justify-end">
+                      <Button type="button" onClick={() => { toast.success('Message sent'); setMessageText(''); }}>
+                        Send Message
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </form>
             </CardContent>
           </Card>
@@ -173,38 +291,40 @@ const BookNow = () => {
               <CardContent>
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar className="w-16 h-16 ring-2 ring-blue-600">
-                    <AvatarImage src={provider.image} alt={provider.name} />
-                    <AvatarFallback>{provider.name[0]}</AvatarFallback>
+                    <AvatarImage src={provider.imageUrl} alt={provider.provider_id} />
+                    <AvatarFallback>{(provider.professions?.[0] || 'P')[0]}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <h3 className="font-bold text-lg">{provider.name}</h3>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">{provider.service}</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-lg">{(provider.professions?.[0] || 'Provider').replace('_',' ')}</h3>
+                      {(provider?.is_available ?? provider?.availability_status) ? (
+                        <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Available</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Busy</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.provider_id}</p>
                   </div>
                 </div>
                 <div className="space-y-3 mb-4">
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Rating</span>
-                    <span className="font-semibold">{provider.rating} / 5.0</span>
+                    <span className="text-slate-600 dark:text-slate-400">Location</span>
+                    <span className="font-semibold">{typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'N/A'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Distance</span>
-                    <span className="font-semibold">{provider.distance}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Starting Rate</span>
-                    <span className="font-semibold text-blue-600">{provider.price}</span>
+                    <span className="text-slate-600 dark:text-slate-400">Last Update</span>
+                    <span className="font-semibold">{provider.last_location_at ? new Date(provider.last_location_at).toLocaleString() : 'N/A'}</span>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate(`/provider/${provider.id}`)}
+                  onClick={() => navigate(`/provider/${provider.provider_id}`)}
                 >
                   View Full Profile
                 </Button>
               </CardContent>
             </Card>
-
             <Card className="border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-700">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">

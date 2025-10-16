@@ -37,17 +37,30 @@ export default function AuthCallback() {
           try { window.history.replaceState({}, document.title, `${window.location.origin}/auth/callback`); } catch {}
           localStorage.setItem('emailVerified', '1');
           toast.success('Email verified');
-          // Mirror verification to backend providers table
+          // Mirror verification to backend providers table (best-effort)
           try {
             await fetch(`${BACKEND_URL}/api/provider/email-verified`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email: user.email }),
             });
-          } catch (e) {
-            // non-blocking; proceed regardless
+          } catch (e) {}
+
+          // If a provider row already exists for this user, go to dashboard; else go to registration
+          try {
+            const { data: p, error: pErr } = await supabase
+              .from('providers')
+              .select('provider_id, user_id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (!pErr && p?.provider_id) {
+              navigate(`/dashboard/${p.provider_id}`, { replace: true });
+            } else {
+              navigate('/register/step/1', { replace: true });
+            }
+          } catch (_) {
+            navigate('/register/step/1', { replace: true });
           }
-          navigate('/register/step/1', { replace: true });
           
         } else {
           // Clean URL before redirecting

@@ -10,7 +10,7 @@ function Privacy() {
   const navigate = useNavigate();
 
   const handleNext = () => {
-    if (accepted) navigate('/register/step/1');
+    if (accepted) navigate('/login');
   };
 
   return (
