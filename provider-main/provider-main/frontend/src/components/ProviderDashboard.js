@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
-import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star } from 'lucide-react';
+import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 function ReviewsPanel({ providerId }) {
@@ -13,7 +13,7 @@ function ReviewsPanel({ providerId }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     if (!providerId) return;
-    let channel;
+    let channel, channel2;
     let cancelled = false;
     const load = async () => {
       try {
@@ -87,6 +87,9 @@ const ProviderDashboard = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState([]);
   const [walletSum, setWalletSum] = useState(null);
+  const [msgOpen, setMsgOpen] = useState(false);
+  const [msgCount, setMsgCount] = useState(0);
+  const [msgItems, setMsgItems] = useState([]);
 
   useEffect(() => {
     fetchProviderData();
@@ -108,7 +111,6 @@ const ProviderDashboard = () => {
       setIsLoading(false);
     }
   };
-
 
   // Realtime payments: compute wallet sum(amount) and toast on new payments
   useEffect(() => {
@@ -143,8 +145,72 @@ const ProviderDashboard = () => {
         })
         .subscribe();
     } catch (_) {}
-    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} try { channel2 && supabase.removeChannel(channel2); } catch (_) {} };
   }, [provider?.provider_id]);
+
+  // Messages realtime for provider (recipient_id only)
+useEffect(() => {
+  if (!provider?.provider_id) return; // Exit if no provider ID
+
+  let channel;
+  let cancelled = false;
+  let firstLoad = true;
+
+  // Function to fetch latest messages
+  const loadMessages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, booking_id, sender_id, recipient_id, content, created_at')
+        .eq('recipient_id', provider.provider_id) // Must be valid UUID
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) { try { toast.error('Failed to load messages'); } catch (_) {} return; }
+      if (!cancelled) {
+        setMsgItems(data || []);
+        setMsgCount((data || []).length);
+
+        if (firstLoad) { try { toast.message(`Messages loaded: ${(data || []).length}`); } catch (_) {} firstLoad = false; }
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+    }
+  };
+
+  loadMessages(); // Initial load
+
+  // Set up real-time subscription
+  try {
+    channel = supabase
+      .channel(`realtime-messages-${provider.provider_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `recipient_id=eq."${provider.provider_id}"`, // ✅ UUID must be in quotes
+        },
+        async (payload) => {
+          if (payload?.eventType === 'INSERT') {
+            setMsgCount((c) => c + 1);
+            toast.success('New message received');
+          }
+          await loadMessages(); // Refresh messages
+        }
+      )
+      .subscribe();
+  } catch (err) {
+    console.error('Realtime subscription error:', err);
+  }
+
+  return () => {
+    cancelled = true;
+    if (channel) supabase.removeChannel(channel); // Clean up subscription
+  };
+}, [provider?.provider_id]);
+
 
   const markWorkDone = async (bookingId) => {
     try {
@@ -164,7 +230,6 @@ const ProviderDashboard = () => {
       toast.error('Failed to mark as completed');
     }
   };
-
 
   // Realtime notifications for bookings
   useEffect(() => {
@@ -340,6 +405,15 @@ const ProviderDashboard = () => {
                 </span>
               )}
             </button>
+            <button type="button" onClick={() => setMsgOpen(v => !v)} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
+              <MessageSquare className="h-4 w-4 text-gray-700" />
+              <span className="text-sm text-gray-700">Messages</span>
+              {msgCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
+                  {msgCount}
+                </span>
+              )}
+            </button>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100">
               <span className="text-sm text-gray-700">Completed Jobs</span>
               <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-emerald-600 text-white">
@@ -348,6 +422,34 @@ const ProviderDashboard = () => {
             </div>
           </div>
         </div>
+
+        {msgOpen && (
+          <div className="max-w-6xl mx-auto mb-6">
+            <Card className="border-0 shadow-2xl">
+              <CardHeader>
+                <CardTitle>Messages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {msgItems.length === 0 ? (
+                  <div className="text-sm text-gray-600">No messages yet.</div>
+                ) : (
+                  <div className="divide-y">
+                    {msgItems.map((m) => (
+                      <div key={m.id} className="py-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
+                          {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
+                          <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
+                        </div>
+                        <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {notifOpen && (
           <div className="max-w-6xl mx-auto mb-6">

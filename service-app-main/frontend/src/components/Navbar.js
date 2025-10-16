@@ -57,7 +57,7 @@ const Navbar = () => {
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-xl flex items-center justify-center transform group-hover:scale-110 transition-transform duration-200">
                 <Search className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">NEXORA</span>
+              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">FIXORA</span>
             </Link>
           </div>
 
