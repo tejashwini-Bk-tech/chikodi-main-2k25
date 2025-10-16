@@ -127,6 +127,8 @@ const BookNow = () => {
     setBookingStatus('booked');
   };
 
+  
+
   if (status === 'loading') return (
     <div className="min-h-screen pt-20 pb-12 px-4"><div className="max-w-4xl mx-auto text-slate-600">Loading…</div></div>
   );
@@ -276,6 +278,7 @@ const BookNow = () => {
                         Send Message
                       </Button>
                     </div>
+                    
                   </div>
                 )}
               </form>

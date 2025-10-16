@@ -5,8 +5,77 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
-import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell } from 'lucide-react';
+import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+
+function ReviewsPanel({ providerId }) {
+  const [avg, setAvg] = useState(null);
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    if (!providerId) return;
+    let channel;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('reviews')
+          .select('id, user_id, rating, comment, created_at')
+          .eq('provider_id', providerId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (!error && !cancelled) {
+          setItems(data || []);
+          if (data && data.length) {
+            const sum = data.reduce((s, r) => s + (Number(r.rating) || 0), 0);
+            setAvg((sum / data.length).toFixed(1));
+          } else {
+            setAvg(null);
+          }
+        }
+      } catch (_) {}
+    };
+    load();
+    try {
+      channel = supabase
+        .channel(`realtime-reviews-${providerId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `provider_id=eq.${providerId}` }, async () => {
+          await load();
+        })
+        .subscribe();
+    } catch (_) {}
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+  }, [providerId]);
+
+  return (
+    <Card className="glass-card border-0 shadow-2xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Star className="h-5 w-5 text-amber-500" />
+          <span>Reviews</span>
+          {avg && <span className="ml-2 text-sm text-gray-600">Avg {avg}/5</span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <div className="text-sm text-gray-600">No reviews yet.</div>
+        ) : (
+          <div className="space-y-3">
+            {items.map(r => (
+              <div key={r.id} className="p-3 rounded-lg bg-gray-50">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-semibold">{r.user_id || 'User'}</span>
+                  <span className="text-amber-600">{('★').repeat(Number(r.rating) || 0)}</span>
+                  <span className="text-xs text-gray-500">{new Date(r.created_at).toLocaleString()}</span>
+                </div>
+                {r.comment && <div className="text-sm text-gray-700 mt-1">{r.comment}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 const ProviderDashboard = () => {
   const { providerId } = useParams();
@@ -14,8 +83,10 @@ const ProviderDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isTogglingAvail, setIsTogglingAvail] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState([]);
+  const [walletSum, setWalletSum] = useState(null);
 
   useEffect(() => {
     fetchProviderData();
@@ -37,6 +108,63 @@ const ProviderDashboard = () => {
       setIsLoading(false);
     }
   };
+
+
+  // Realtime payments: compute wallet sum(amount) and toast on new payments
+  useEffect(() => {
+    if (!provider?.provider_id) return;
+    let channel;
+    let cancelled = false;
+    const refreshSum = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('provider_id', provider.provider_id);
+        if (!error && !cancelled) {
+          const sum = (data || []).reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
+          setWalletSum(sum);
+        }
+      } catch (_) {}
+    };
+    refreshSum();
+    try {
+      channel = supabase
+        .channel(`realtime-payments-${provider.provider_id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `provider_id=eq.${provider.provider_id}` }, async (payload) => {
+          if (payload?.eventType === 'INSERT') {
+            const amt = Number(payload?.new?.amount) || 0;
+            const method = payload?.new?.method || 'payment';
+            if (amt > 0) {
+              toast.success(`Payment received: ₹${amt.toFixed(2)}`, { description: method === 'cash' ? 'Cash payment confirmed' : 'Wallet updated' });
+            }
+          }
+          await refreshSum();
+        })
+        .subscribe();
+    } catch (_) {}
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+  }, [provider?.provider_id]);
+
+  const markWorkDone = async (bookingId) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'completed' })
+        .eq('id', bookingId)
+        .eq('provider_id', provider.provider_id);
+      if (error) throw error;
+      toast.success('Marked as completed');
+      // Refresh notifications and count
+      await loadLatestBookings();
+      // Trigger count refresh by reusing realtime refresh
+      setNotifCount((c) => Math.max(0, c - 1));
+    } catch (e) {
+      console.error('Failed to mark done', e);
+      toast.error('Failed to mark as completed');
+    }
+  };
+
 
   // Realtime notifications for bookings
   useEffect(() => {
@@ -67,6 +195,33 @@ const ProviderDashboard = () => {
       cancelled = true;
       try { channel && supabase.removeChannel(channel); } catch (_) {}
     };
+  }, [provider?.provider_id]);
+
+  // Realtime completed jobs count
+  useEffect(() => {
+    if (!provider?.provider_id) return;
+    let channel;
+    let cancelled = false;
+    const refreshCompleted = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('provider_id', provider.provider_id)
+          .eq('status', 'completed');
+        if (!error && !cancelled) setCompletedCount((data || []).length);
+      } catch (_) {}
+    };
+    refreshCompleted();
+    try {
+      channel = supabase
+        .channel(`realtime-bookings-completed-${provider.provider_id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, async () => {
+          await refreshCompleted();
+        })
+        .subscribe();
+    } catch (_) {}
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
   }, [provider?.provider_id]);
 
   const loadLatestBookings = async () => {
@@ -175,7 +330,7 @@ const ProviderDashboard = () => {
             </Badge>
           )}
 
-          <div className="mt-3 flex justify-center">
+          <div className="mt-3 flex justify-center gap-3 flex-wrap">
             <button type="button" onClick={() => { setNotifOpen(v => !v); if (!notifOpen) loadLatestBookings(); }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
               <Bell className="h-4 w-4 text-gray-700" />
               <span className="text-sm text-gray-700">Notifications</span>
@@ -185,6 +340,12 @@ const ProviderDashboard = () => {
                 </span>
               )}
             </button>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100">
+              <span className="text-sm text-gray-700">Completed Jobs</span>
+              <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-emerald-600 text-white">
+                {completedCount}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -225,6 +386,8 @@ const ProviderDashboard = () => {
                             ) : (
                               <span className="text-xs text-gray-500">No location</span>
                             )}
+                            <button type="button" onClick={() => markWorkDone(b.id)} className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Mark Done</button>
+                            {/* Removed provider-side 'Record Payment' button; payments are initiated by user */}
                           </div>
                         </div>
                       );
@@ -305,6 +468,8 @@ const ProviderDashboard = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Reviews (Realtime) */}
+            <ReviewsPanel providerId={provider.provider_id} />
             {/* Availability */}
             <Card className="glass-card border-0 shadow-2xl">
               <CardHeader>
@@ -346,7 +511,7 @@ const ProviderDashboard = () => {
                       <div>
                         <p className="text-white/80 text-sm font-medium">Current Balance</p>
                         <p className="text-4xl font-bold text-white" data-testid="wallet-balance">
-                          ₹{Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00'}
+                          ₹{Number.isFinite(walletSum) ? walletSum.toFixed(2) : (Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00')}
                         </p>
                       </div>
                       <div className="text-white/60">
@@ -359,6 +524,7 @@ const ProviderDashboard = () => {
                       <p className="text-white/60 text-xs mt-1">
                         Member since {new Date(provider.created_at).toLocaleDateString()}
                       </p>
+                      {/* Removed provider-side test payment button */}
                     </div>
                   </div>
                 </div>
