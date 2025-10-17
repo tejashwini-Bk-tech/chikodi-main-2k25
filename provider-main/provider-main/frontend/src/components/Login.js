@@ -135,9 +135,6 @@ const Login = () => {
             <Button onClick={signInWithPassword} disabled={loading} className="h-11 flex-1">
               {loading ? 'Please wait...' : 'Sign In'}
             </Button>
-            <Button onClick={signUpWithPassword} disabled={loading} variant="outline" className="h-11 flex-1">
-              {loading ? 'Please wait...' : 'Create Account'}
-            </Button>
           </div>
           {/* <Button onClick={sendMagicLink} disabled={loading} className="w-full h-11">
             {loading ? 'Sending...' : 'Send Magic Link'}
