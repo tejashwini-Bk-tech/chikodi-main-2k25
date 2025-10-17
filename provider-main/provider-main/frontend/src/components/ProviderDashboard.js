@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
@@ -34,6 +35,26 @@ function ReviewsPanel({ providerId }) {
         }
       } catch (_) {}
     };
+
+  const verifyIdentity = async () => {
+    try {
+      const a = (aadhaarVal || '').replace(/\D/g, '');
+      const aOk = /^\d{12}$/.test(a);
+      const p = (panVal || '').toUpperCase().trim();
+      const pOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(p);
+      if (!aOk) { toast.error('Enter a valid 12-digit Aadhaar number'); return; }
+      if (!pOk) { toast.error('Enter a valid PAN (e.g., ABCDE1234F)'); return; }
+      const { error } = await supabase
+        .from('providers')
+        .update({ is_verified: true, verification_date: new Date().toISOString() })
+        .eq('provider_id', provider.provider_id);
+      if (error) throw error;
+      setProvider(prev => prev ? { ...prev, is_verified: true, verification_date: new Date().toISOString() } : prev);
+      toast.success('Identity verified');
+    } catch (e) {
+      toast.error('Failed to verify identity');
+    }
+  };
     load();
     try {
       channel = supabase
@@ -79,6 +100,7 @@ function ReviewsPanel({ providerId }) {
 
 const ProviderDashboard = () => {
   const { providerId } = useParams();
+  const navigate = useNavigate();
   const [provider, setProvider] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isTogglingAvail, setIsTogglingAvail] = useState(false);
@@ -90,6 +112,9 @@ const ProviderDashboard = () => {
   const [msgOpen, setMsgOpen] = useState(false);
   const [msgCount, setMsgCount] = useState(0);
   const [msgItems, setMsgItems] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [aadhaarVal, setAadhaarVal] = useState('');
+  const [panVal, setPanVal] = useState('');
 
   useEffect(() => {
     fetchProviderData();
@@ -103,6 +128,7 @@ const ProviderDashboard = () => {
         .eq('provider_id', providerId)
         .maybeSingle();
       if (error) throw error;
+      console.log('[ProviderDashboard] providers fetch result:', data);
       setProvider(data || null);
     } catch (error) {
       console.error('Failed to fetch provider data:', error);
@@ -111,6 +137,35 @@ const ProviderDashboard = () => {
       setIsLoading(false);
     }
   };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {}
+    try { toast.message('Logged out'); } catch (_) {}
+    navigate('/login');
+  };
+
+  const fetchProfileData = async (profileId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', profileId)
+        .maybeSingle();
+      if (error) throw error;
+      console.log('[ProviderDashboard] profiles fetch result:', data);
+      setProfile(data || null);
+    } catch (e) {
+      console.error('Failed to fetch profile data:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (provider?.provider_id) {
+      fetchProfileData(provider.provider_id);
+    }
+  }, [provider?.provider_id]);
 
   // Realtime payments: compute wallet sum(amount) and toast on new payments
   useEffect(() => {
@@ -145,7 +200,7 @@ const ProviderDashboard = () => {
         })
         .subscribe();
     } catch (_) {}
-    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} try { channel2 && supabase.removeChannel(channel2); } catch (_) {} };
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} try { channel && supabase.removeChannel(channel); } catch (_) {} };
   }, [provider?.provider_id]);
 
   // Messages realtime for provider (recipient_id only)
@@ -385,7 +440,7 @@ useEffect(() => {
             </div>
             <div className="text-left">
               <h1 className="text-3xl font-bold text-gray-800">Provider Dashboard</h1>
-              <p className="text-gray-600">Welcome back, Provider ID: {provider.provider_id}</p>
+              <p className="text-gray-600">Welcome back, {profile?.full_name || 'Provider'} · <span className="text-xs">ID: {provider.provider_id}</span></p>
             </div>
           </div>
           
@@ -420,6 +475,9 @@ useEffect(() => {
                 {completedCount}
               </span>
             </div>
+            <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
+              <span className="text-sm text-gray-700">Logout</span>
+            </button>
           </div>
         </div>
 
@@ -509,7 +567,7 @@ useEffect(() => {
                 <div className="text-center space-y-4">
                   <div className="id-card-header">Service Provider ID</div>
                   
-                  <div className="provider-id text-4xl font-black" data-testid="provider-id-display">
+                  <div className="provider-id text-sm font-semibold" data-testid="provider-id-display">
                     {provider.provider_id}
                   </div>
                   
@@ -517,8 +575,12 @@ useEffect(() => {
                   
                   <div className="space-y-2 text-left">
                     <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4" />
+                      <span className="text-sm">{profile?.full_name || '—'}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
                       <Phone className="h-4 w-4" />
-                      <span className="text-sm">{provider.mobile_number}</span>
+                      <span className="text-sm">{profile?.phone || provider.mobile_number}</span>
                     </div>
                     {provider.email && (
                       <div className="flex items-center space-x-2">
@@ -570,6 +632,28 @@ useEffect(() => {
 
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {!provider.is_verified && (
+              <Card className="glass-card border-0 shadow-2xl">
+                <CardHeader>
+                  <CardTitle>Identity Verification</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm text-gray-700">Aadhaar Number</label>
+                      <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-700">PAN</label>
+                      <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <Button onClick={verifyIdentity}>Verify</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             {/* Reviews (Realtime) */}
             <ReviewsPanel providerId={provider.provider_id} />
             {/* Availability */}

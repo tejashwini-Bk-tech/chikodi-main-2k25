@@ -350,10 +350,31 @@ const ProviderRegistration = () => {
       } else {
         setFormData(prev => ({ ...prev, [fieldName]: base64 }));
         setUploadedFiles(prev => ({ ...prev, [fieldName]: file.name }));
-
-        // Skip OCR for Aadhaar and PAN: just store files
-        if (fieldName === 'aadhaar_card' || fieldName === 'pan_card') {
-          // no-op (files already set)
+        if (fieldName === 'aadhaar_card') {
+          const text = await ocrImage(base64);
+          const valid = verifyAadhaarText(text);
+          setAadhaarVerified(!!valid);
+          if (valid) {
+            const name = extractNameFromOcr(text);
+            if (name) setIdHolderName(name);
+            toast.success('Aadhaar verified');
+          } else {
+            toast.error('Invalid Aadhaar image');
+          }
+        }
+        if (fieldName === 'pan_card') {
+          const text = await ocrImage(base64);
+          const valid = verifyPanText(text);
+          setPanVerified(!!valid);
+          if (valid) {
+            if (!idHolderName) {
+              const name = extractNameFromOcr(text);
+              if (name) setIdHolderName(name);
+            }
+            toast.success('PAN verified');
+          } else {
+            toast.error('Invalid PAN image');
+          }
         }
         if (fieldName === 'govt_certificate') {
           // For electrician mandatory certificate, verify name if available
@@ -453,6 +474,14 @@ const ProviderRegistration = () => {
           toast.error('Please upload both Aadhaar and PAN card');
           return false;
         }
+        if (!aadhaarVerified) {
+          toast.error('Aadhaar not verified. Please upload a valid Aadhaar image');
+          return false;
+        }
+        if (!panVerified) {
+          toast.error('PAN not verified. Please upload a valid PAN image');
+          return false;
+        }
         return true;
       case 3:
         if (requiresTradeLicense() && isLocksmiths() && !formData.trade_license) {
@@ -550,6 +579,7 @@ const ProviderRegistration = () => {
       documents.aadhaar_card = await upload(formData.aadhaar_card, 'aadhaar_card.jpg');
       documents.pan_card = await upload(formData.pan_card, 'pan_card.jpg');
       documents.face_photo = await upload(formData.face_photo, 'face_photo.jpg');
+      try { console.log('[ProviderRegistration] upload paths', { face_photo: documents.face_photo, aadhaar: documents.aadhaar_card, pan: documents.pan_card, work_sample: documents.work_sample }); } catch (_) {}
 
       // Newly added uploads
       documents.govt_certificate = await upload(formData.govt_certificate, 'govt_certificate.jpg');
@@ -602,6 +632,7 @@ const ProviderRegistration = () => {
         }
       }
 
+      const verified = !!(aadhaarVerified && panVerified);
       const insertRow = {
         professions: formData.professions,
         has_trade_license,
@@ -609,7 +640,8 @@ const ProviderRegistration = () => {
         has_certificates,
         professional_status,
         documents,
-        is_verified: true,
+        face_photo: documents.face_photo || null,
+        is_verified: verified,
         verification_date: new Date().toISOString(),
         user_id: user_id || undefined,
         location: {
@@ -621,8 +653,11 @@ const ProviderRegistration = () => {
         last_location_at: new Date().toISOString()
       };
 
+      try { console.log('[ProviderRegistration] inserting provider row', { professions: insertRow.professions, documents: insertRow.documents }); } catch (_) {}
+
       const { data: inserted, error } = await supabase.from('providers').insert(insertRow).select('*').single();
       if (error) throw error;
+      try { console.log('[ProviderRegistration] inserted row', { professions: inserted?.professions, face_photo: inserted?.documents?.face_photo, documents: inserted?.documents }); } catch (_) {}
 
       toast.success('Registration successful! Redirecting to your dashboard...');
       setTimeout(() => {
