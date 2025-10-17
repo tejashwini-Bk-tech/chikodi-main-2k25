@@ -38,14 +38,19 @@ const BookNow = () => {
           .maybeSingle();
         if (error) throw error;
         if (!data) { navigate('/providers'); return; }
-        // Signed face photo URL if present
+        // Face photo may be stored as a storage path or inline base64. Handle both.
         let imageUrl = '';
         const facePath = data?.documents?.face_photo;
         if (facePath && typeof facePath === 'string') {
-          try {
-            const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
-            if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
-          } catch (_) {}
+          const looksBase64 = facePath.length > 100 && !facePath.includes('/') && !facePath.includes('.');
+          if (looksBase64) {
+            imageUrl = `data:image/jpeg;base64,${facePath}`;
+          } else {
+            try {
+              const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
+              if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
+            } catch (_) {}
+          }
         }
         setProvider({ ...data, imageUrl });
         setStatus('success');
@@ -102,8 +107,19 @@ const BookNow = () => {
           scheduled_date,
           scheduled_time,
         };
-        await supabase.from('bookings').insert(payload);
-      } catch (_) {}
+        const { data, error } = await supabase.from('bookings').insert(payload).select('id');
+        if (error) {
+          toast.error('Failed to send request', { description: error.message || 'Please try again.' });
+          return;
+        }
+        try {
+          const bookingId = Array.isArray(data) ? data[0]?.id : data?.id;
+          console.log('[BookNow] booking inserted', { status: 'requested', bookingId, payload });
+        } catch (_) {}
+      } catch (e) {
+        toast.error('Failed to send request', { description: e?.message || 'Please try again.' });
+        return;
+      }
       toast.success('Request Sent!', { description: 'The provider will review your requested date/time.' });
       setBookingStatus('requested');
       return;
@@ -121,8 +137,19 @@ const BookNow = () => {
         scheduled_date: date ? new Date(date).toISOString().slice(0,10) : null,
         scheduled_time: time || null,
       };
-      await supabase.from('bookings').insert(payload);
-    } catch (_) {}
+      const { data, error } = await supabase.from('bookings').insert(payload).select('id');
+      if (error) {
+        toast.error('Failed to book', { description: error.message || 'Please try again.' });
+        return;
+      }
+      try {
+        const bookingId = Array.isArray(data) ? data[0]?.id : data?.id;
+        console.log('[BookNow] booking inserted', { status: 'booked', bookingId, payload });
+      } catch (_) {}
+    } catch (e) {
+      toast.error('Failed to book', { description: e?.message || 'Please try again.' });
+      return;
+    }
     toast.success('Booked!', { description: 'Your booking is confirmed.' });
     setBookingStatus('booked');
   };
