@@ -132,19 +132,13 @@ const ProviderProfile = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Button */}
             <div className="flex gap-3 mt-6">
               <Button
                 onClick={() => navigate(`/book/${provider.provider_id}`)}
                 className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white py-6 text-lg transition-all duration-300 hover:scale-[1.02]"
               >
                 Book Now
-              </Button>
-              <Button variant="outline" className="py-6">
-                <Phone className="w-5 h-5" />
-              </Button>
-              <Button variant="outline" className="py-6">
-                <Mail className="w-5 h-5" />
               </Button>
             </div>
           </CardContent>
