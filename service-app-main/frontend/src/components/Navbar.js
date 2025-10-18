@@ -28,8 +28,7 @@ const Navbar = () => {
 
   const languages = [
     { code: 'en', label: 'English', flag: '🇺🇸' },
-    { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
-    { code: 'es', label: 'Español', flag: '🇪🇸' }
+    { code: 'kn', label: 'ಕನ್ನಡ', flag: '🇮🇳' }
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -68,18 +67,18 @@ const Navbar = () => {
               <Button variant="ghost" className={`px-3 ${isActive('/') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>{t('home')}</Button>
             </Link>
             <Link to="/geolocation">
-              <Button variant="ghost" className={`px-3 ${isActive('/geolocation') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>Map</Button>
+              <Button variant="ghost" className={`px-3 ${isActive('/geolocation') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>{t('map') || 'Map'}</Button>
             </Link>
             <Link to="/payments">
-              <Button variant="ghost" className={`px-3 ${isActive('/payments') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>Payments</Button>
+              <Button variant="ghost" className={`px-3 ${isActive('/payments') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>{t('payments') || 'Payments'}</Button>
             </Link>
             {isLoggedIn && (
               <>
                 <Link to="/dashboard">
-                  <Button variant="ghost" className={`px-3 ${isActive('/dashboard') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>Dashboard</Button>
+                  <Button variant="ghost" className={`px-3 ${isActive('/dashboard') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>{t('dashboard') || 'Dashboard'}</Button>
                 </Link>
                 <Link to="/providers">
-                  <Button variant="ghost" className={`px-3 ${isActive('/providers') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>Services</Button>
+                  <Button variant="ghost" className={`px-3 ${isActive('/providers') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>{t('services') || 'Services'}</Button>
                 </Link>
               </>
             )}
@@ -123,11 +122,11 @@ const Navbar = () => {
                 <Link to="/profile">
                   <Button variant="ghost" className={`px-4 ${isActive('/profile') ? 'bg-slate-100 dark:bg-slate-800' : ''}`}>
                     <User className="w-4 h-4 mr-2" />
-                    Profile
+                    {t('profile') || 'Profile'}
                   </Button>
                 </Link>
                 {!isDashboard && (
-                  <Button variant="outline" onClick={handleLogout}>Logout</Button>
+                  <Button variant="outline" onClick={handleLogout}>{t('logout') || 'Logout'}</Button>
                 )}
               </>
             ) : (
@@ -199,27 +198,27 @@ const Navbar = () => {
                   </Button>
                 </Link>
                 <Link to="/geolocation" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Map</Button>
+                  <Button variant="ghost" className="w-full justify-start">{t('map') || 'Map'}</Button>
                 </Link>
                 <Link to="/payments" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">Payments</Button>
+                  <Button variant="ghost" className="w-full justify-start">{t('payments') || 'Payments'}</Button>
                 </Link>
                 {isLoggedIn && (
                   <>
                     <Link to="/providers" onClick={() => setMobileMenuOpen(false)}>
-                      <Button variant="ghost" className="w-full justify-start">Services</Button>
+                      <Button variant="ghost" className="w-full justify-start">{t('services') || 'Services'}</Button>
                     </Link>
                     <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)}>
-                      <Button variant="ghost" className="w-full justify-start">Dashboard</Button>
+                      <Button variant="ghost" className="w-full justify-start">{t('dashboard') || 'Dashboard'}</Button>
                     </Link>
                     <Link to="/profile" onClick={() => setMobileMenuOpen(false)}>
                       <Button variant="ghost" className="w-full justify-start">
                         <User className="w-4 h-4 mr-2" />
-                        Profile
+                        {t('profile') || 'Profile'}
                       </Button>
                     </Link>
                     {!isDashboard && (
-                      <Button variant="outline" className="w-full justify-start" onClick={() => { setMobileMenuOpen(false); handleLogout(); }}>Logout</Button>
+                      <Button variant="outline" className="w-full justify-start" onClick={() => { setMobileMenuOpen(false); handleLogout(); }}>{t('logout') || 'Logout'}</Button>
                     )}
                   </>
                 )}

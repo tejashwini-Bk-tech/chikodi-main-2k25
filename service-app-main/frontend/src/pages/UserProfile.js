@@ -401,7 +401,7 @@ const UserProfile = () => {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8 animate-in fade-in duration-500">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-            My Profile
+            {t('myProfile') || 'My Profile'}
           </h1>
         </div>
 
@@ -418,7 +418,7 @@ const UserProfile = () => {
                 </Avatar>
                 <h2 className="text-2xl font-bold mb-1">{user.fullName || 'User'}</h2>
                 <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                  Verified
+                  {t('verifiedBadge') || 'Verified'}
                 </Badge>
                 <Button
                   variant="ghost"
@@ -426,7 +426,7 @@ const UserProfile = () => {
                   onClick={() => setEditing((v) => !v)}
                 >
                   <Edit className="w-4 h-4 mr-2" />
-                  {editing ? 'Close Editor' : 'Edit Profile'}
+                  {editing ? (t('closeEditor') || 'Close Editor') : (t('editProfile') || 'Edit Profile')}
                 </Button>
                 <Dialog>
                   <DialogTrigger asChild>
@@ -476,24 +476,24 @@ const UserProfile = () => {
           {/* Details Card */}
           <Card className="md:col-span-2 border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-700">
             <CardHeader>
-              <CardTitle className="text-2xl">Account Information</CardTitle>
+              <CardTitle className="text-2xl">{t('accountInformation') || 'Account Information'}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {editing && (
                 <form onSubmit={handleSave} className="space-y-4 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
                   <div>
-                    <Label htmlFor="fullName">Full Name</Label>
+                    <Label htmlFor="fullName">{t('fullNameLabel') || 'Full Name'}</Label>
                     <Input
                       id="fullName"
                       value={form.fullName}
                       onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
-                      placeholder="Enter your full name"
+                      placeholder={t('enterFullName') || 'Enter your full name'}
                       className="mt-2"
                       required
                     />
                   </div>
                   <div>
-                    <Label htmlFor="avatarUrl">Avatar URL (optional)</Label>
+                    <Label htmlFor="avatarUrl">{t('avatarUrlLabel') || 'Avatar URL (optional)'}</Label>
                     <Input
                       id="avatarUrl"
                       value={form.avatarUrl}
@@ -505,10 +505,10 @@ const UserProfile = () => {
                   </div>
                   <div className="flex gap-3">
                     <Button type="submit" disabled={saving} className="min-w-24">
-                      {saving ? 'Saving...' : 'Save Changes'}
+                      {saving ? 'Saving...' : (t('saveChanges') || 'Save Changes')}
                     </Button>
                     <Button type="button" variant="secondary" onClick={() => { setEditing(false); setForm({ fullName: user.fullName || '', avatarUrl: user.avatarUrl || '' }); }}>
-                      Cancel
+                      {t('cancel') || 'Cancel'}
                     </Button>
                   </div>
                 </form>
@@ -531,7 +531,7 @@ const UserProfile = () => {
                     <Mail className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Email</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{t('emailLabel') || 'Email'}</p>
                     <p className="font-semibold">{user.email || 'Not provided'}</p>
                   </div>
                 </div>
@@ -543,12 +543,12 @@ const UserProfile = () => {
                     <Phone className="w-5 h-5 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Phone</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{t('phoneLabel') || 'Phone'}</p>
                     <p className="font-semibold">{user.phone || 'Not provided'}</p>
                     {!user.phone && (
                       <div className="mt-2">
                         <Button size="sm" onClick={() => navigate('/verify-otp')}>
-                          Verify Number
+                          {t('verifyNumber') || 'Verify Number'}
                         </Button>
                       </div>
                     )}
@@ -562,7 +562,7 @@ const UserProfile = () => {
                     <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Member Since</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{t('memberSince') || 'Member Since'}</p>
                     <p className="font-semibold">{new Date().toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -574,7 +574,7 @@ const UserProfile = () => {
                 className="w-full mt-6 transition-all duration-300 hover:scale-[1.02]"
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                {t('logout') || 'Logout'}
               </Button>
             </CardContent>
           </Card>
@@ -583,38 +583,38 @@ const UserProfile = () => {
         {/* Booking History */}
         <Card className="mt-6 border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-1000">
           <CardHeader>
-            <CardTitle className="text-2xl">Recent Bookings</CardTitle>
+            <CardTitle className="text-2xl">{t('recentBookings') || 'Recent Bookings'}</CardTitle>
           </CardHeader>
           <CardContent>
             {!latestBooking ? (
               <div className="text-center py-8 text-slate-600 dark:text-slate-400">
-                <p>No bookings yet. Start by finding a service provider!</p>
+                <p>{t('noBookingsYet') || 'No bookings yet. Start by finding a service provider!'}</p>
                 <Button
                   onClick={() => navigate('/providers')}
                   className="mt-4 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white"
                 >
-                  Browse Providers
+                  {t('browseProviders') || 'Browse Providers'}
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-sm text-slate-600">Booking ID</div>
+                    <div className="text-sm text-slate-600">{t('bookingId') || 'Booking ID'}</div>
                     <div className="font-semibold truncate">{latestBooking.id}</div>
                     {latestBooking.scheduled_date || latestBooking.scheduled_time ? (
-                      <div className="text-xs text-slate-600 mt-1">When: {latestBooking.scheduled_date || ''} {latestBooking.scheduled_time || ''}</div>
+                      <div className="text-xs text-slate-600 mt-1">{t('when') || 'When'}: {latestBooking.scheduled_date || ''} {latestBooking.scheduled_time || ''}</div>
                     ) : null}
                     {latestBooking.address ? (
-                      <div className="text-xs text-slate-600 mt-1">Address: {latestBooking.address}</div>
+                      <div className="text-xs text-slate-600 mt-1">{t('address') || 'Address'}: {latestBooking.address}</div>
                     ) : null}
                     {latestBooking.notes ? (
-                      <div className="text-xs text-slate-500 mt-1">Notes: {latestBooking.notes}</div>
+                      <div className="text-xs text-slate-500 mt-1">{t('notes') || 'Notes'}: {latestBooking.notes}</div>
                     ) : null}
                   </div>
                   <div className="shrink-0 text-right">
                     <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                      {latestBooking.status || 'unknown'}
+                      {t('status') || 'Status'}: {latestBooking.status || 'unknown'}
                     </Badge>
                     {latestProvider && (
                       <div className="mt-2 flex items-center justify-end gap-2">
@@ -626,7 +626,7 @@ const UserProfile = () => {
                             if (loc) setUserMapLocation(loc);
                           }}
                           className="inline-flex"
-                          title="Show live location"
+                          title={t('showLiveLocation') || 'Show live location'}
                         >
                           <Badge variant="outline" className="flex items-center gap-1 cursor-pointer">
                             <MapPin className="w-3 h-3" />
@@ -641,7 +641,7 @@ const UserProfile = () => {
                 </div>
                 <div className="pt-2">
                   <Button variant="outline" onClick={() => navigate(`/book/${latestBooking.provider_id}`)}>
-                    Book Again
+                    {t('bookAgain') || 'Book Again'}
                   </Button>
                 </div>
               </div>
@@ -651,11 +651,11 @@ const UserProfile = () => {
         {/* Pending Bookings */}
         <Card className="mt-6 border-0 shadow-lg animate-in fade-in slide-in-from-bottom duration-1000">
           <CardHeader>
-            <CardTitle className="text-2xl">Pending Bookings</CardTitle>
+            <CardTitle className="text-2xl">{t('pendingBookings') || 'Pending Bookings'}</CardTitle>
           </CardHeader>
           <CardContent>
             {pendingBookings.length === 0 ? (
-              <div className="text-sm text-slate-600 dark:text-slate-400">No pending bookings.</div>
+              <div className="text-sm text-slate-600 dark:text-slate-400">{t('noPendingBookings') || 'No pending bookings.'}</div>
             ) : (
               <div className="divide-y">
                 {pendingBookings.map((b) => {
@@ -673,7 +673,7 @@ const UserProfile = () => {
                       </div>
                       <div className="shrink-0 flex items-center gap-2">
                         <Badge variant={p?.is_available ? 'default' : 'outline'} className={p?.is_available ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : ''}>
-                          {p?.is_available ? 'Available' : 'Busy'}
+                          {p?.is_available ? (t('available') || 'Available') : (t('busy') || 'Busy')}
                         </Badge>
                         <button
                           type="button"
@@ -693,12 +693,12 @@ const UserProfile = () => {
                     <div className="mt-2 flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Message provider…"
+                        placeholder={t('messageProviderPlaceholder') || 'Message provider…'}
                         value={messageByBooking[b.id] || ''}
                         onChange={(e) => setMessageByBooking((m) => ({ ...m, [b.id]: e.target.value }))}
                         className="flex-1 border rounded px-3 py-2 text-sm"
                       />
-                      <Button variant="outline" onClick={() => sendMessage(b)}>Send</Button>
+                      <Button variant="outline" onClick={() => sendMessage(b)}>{t('send') || 'Send'}</Button>
                     </div>
                   </div>
                   );

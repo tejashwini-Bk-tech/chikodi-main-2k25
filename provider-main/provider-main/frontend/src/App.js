@@ -10,12 +10,14 @@ import Home from './components/Home';
 import Privacy from './components/Privacy';
 import Login from './components/Login';
 import AdminPage from './pages/AdminPage';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 function App() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
-      <BrowserRouter>
-        <Routes>
+    <LanguageProvider>
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
+        <BrowserRouter>
+          <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/login" element={<Login />} />
@@ -25,10 +27,11 @@ function App() {
           <Route path="/dashboard/:providerId" element={<ProviderDashboard />} />
           <Route path="/account/:providerId" element={<Account />} />
           <Route path="/admin" element={<AdminPage />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster position="top-right" />
-    </div>
+          </Routes>
+        </BrowserRouter>
+        <Toaster position="top-right" />
+      </div>
+    </LanguageProvider>
   );
 }
 
