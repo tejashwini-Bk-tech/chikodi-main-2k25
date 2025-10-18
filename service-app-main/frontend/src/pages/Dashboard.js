@@ -285,7 +285,7 @@ const Dashboard = () => {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8 p-8 rounded-3xl bg-gradient-to-r from-blue-700 via-cyan-600 to-emerald-500 text-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-700">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight drop-shadow-sm">NEXORA</h1>
+            <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight drop-shadow-sm">FIXORA</h1>
             <div className="flex items-center gap-3">
               <span className="text-xs uppercase tracking-widest text-white/80">Service Platform</span>
               {userId && (
@@ -301,7 +301,7 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-          <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide">you name it, we'll provide it</p>
+          <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide"> Get it done - the Fixora way! </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

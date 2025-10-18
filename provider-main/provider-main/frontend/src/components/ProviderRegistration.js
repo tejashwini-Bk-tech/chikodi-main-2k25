@@ -98,24 +98,7 @@ const ProviderRegistration = () => {
 
   // No local email verification; rely on central auth session
 
-  // Compute basic face match whenever ID or face changes
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const idBase = formData.aadhaar_card || formData.pan_card;
-        if (!idBase || !formData.face_photo) { setFaceMatched(false); return; }
-        const [h1, h2] = await Promise.all([aHashFromBase64(idBase), aHashFromBase64(formData.face_photo)]);
-        if (cancelled) return;
-        const dist = hammingDistance(h1, h2);
-        // threshold tuned conservatively for hash size 64 bits
-        setFaceMatched(Number.isFinite(dist) && dist <= 18);
-      } catch (_) {
-        if (!cancelled) setFaceMatched(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [formData.aadhaar_card, formData.pan_card, formData.face_photo]);
+  // Removed: face-to-ID matching logic
 
   const [uploadedFiles, setUploadedFiles] = useState({
     trade_license: null,
@@ -134,7 +117,6 @@ const ProviderRegistration = () => {
   const [panVerified, setPanVerified] = useState(false);
   const [idHolderName, setIdHolderName] = useState('');
   const [certificateVerified, setCertificateVerified] = useState([]); // index-aligned with certificates
-  const [faceMatched, setFaceMatched] = useState(false);
 
   // Extract probable name from OCR text
   const extractNameFromOcr = (text) => {
@@ -391,35 +373,7 @@ const ProviderRegistration = () => {
     }
   };
 
-  // Add helpers to compute simple image hash for face match (aHash)
-  const aHashFromBase64 = async (base64) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 8; canvas.height = 8;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, 8, 8);
-        const data = ctx.getImageData(0, 0, 8, 8).data;
-        const grays = [];
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i+1], b = data[i+2];
-          grays.push(0.299*r + 0.587*g + 0.114*b);
-        }
-        const avg = grays.reduce((a,b)=>a+b,0) / grays.length;
-        const bits = grays.map(v => v >= avg ? 1 : 0);
-        resolve(bits);
-      };
-      img.onerror = () => resolve(null);
-      img.src = `data:image/jpeg;base64,${base64}`;
-    });
-  };
-
-  const hammingDistance = (a, b) => {
-    if (!a || !b || a.length !== b.length) return Infinity;
-    let d = 0; for (let i=0;i<a.length;i++) if (a[i] !== b[i]) d++;
-    return d;
-  };
+  // Removed: helpers used for face-to-ID matching
 
   const captureLocation = () => {
     if (!('geolocation' in navigator)) {
@@ -1081,7 +1035,7 @@ const ProviderRegistration = () => {
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <p className="text-green-600 font-medium">{faceMatched ? '✓ Face matched with ID' : 'Face not matched with ID yet'}</p>
+                  <p className="text-green-600 font-medium">Face photo captured</p>
                   <Button
                     onClick={() => {
                       setShowCamera(true);
