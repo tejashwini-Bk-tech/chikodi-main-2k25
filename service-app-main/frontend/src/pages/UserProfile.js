@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, MapPin, Calendar, LogOut, Edit } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, LogOut, Edit, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
@@ -26,6 +27,9 @@ const UserProfile = () => {
   const [mapForProviderId, setMapForProviderId] = useState(null);
   const [userMapLocation, setUserMapLocation] = useState(null);
   const [messageByBooking, setMessageByBooking] = useState({});
+  const [replies, setReplies] = useState([]);
+  const [repliesOpen, setRepliesOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const sendMessage = async (booking) => {
     const text = (messageByBooking[booking.id] || '').trim();
@@ -192,6 +196,55 @@ const UserProfile = () => {
       return () => { cancelled = true; };
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let channel;
+    let cancelled = false;
+    const storageKey = `messages_last_read_user_${user.id}`;
+    const computeUnread = (items) => {
+      const last = Number(localStorage.getItem(storageKey) || 0);
+      const count = (items || []).filter(m => m.created_at && new Date(m.created_at).getTime() > last).length;
+      setUnreadCount(count);
+    };
+    const loadReplies = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('id, booking_id, sender_id, recipient_id, content, created_at')
+          .eq('recipient_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (!error && !cancelled) {
+          setReplies(data || []);
+          computeUnread(data || []);
+        }
+      } catch (_) {}
+    };
+    loadReplies();
+    try {
+      channel = supabase
+        .channel(`rt-user-messages-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'messages', filter: `recipient_id=eq."${user.id}"` },
+          async () => { await loadReplies(); }
+        )
+        .subscribe();
+    } catch (_) {}
+    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!repliesOpen) return;
+    if (!user?.id) return;
+    const storageKey = `messages_last_read_user_${user.id}`;
+    localStorage.setItem(storageKey, String(Date.now()));
+    // Recompute unread after marking read
+    const last = Number(localStorage.getItem(storageKey) || 0);
+    const count = (replies || []).filter(m => m.created_at && new Date(m.created_at).getTime() > last).length;
+    setUnreadCount(count);
+  }, [repliesOpen, user?.id, replies]);
 
   useEffect(() => {
     if (!latestBooking?.provider_id) return;
@@ -375,6 +428,47 @@ const UserProfile = () => {
                   <Edit className="w-4 h-4 mr-2" />
                   {editing ? 'Close Editor' : 'Edit Profile'}
                 </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <button type="button" onClick={() => setRepliesOpen(true)} className="relative mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-md bg-slate-100 hover:bg-slate-200 transition text-sm font-medium text-slate-700">
+                      <MessageSquare className="w-4 h-4" />
+                      <span>Messages</span>
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-sm font-semibold">F</span>
+                        <span>Fixapp Chat</span>
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="mt-2">
+                      {replies.length === 0 ? (
+                        <div className="text-sm text-slate-600">No messages yet.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {replies.map((m) => {
+                            const isIncoming = true; // provider -> user
+                            const timeStr = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                            return (
+                              <div key={m.id} className={`flex ${isIncoming ? 'justify-start' : 'justify-end'}`}>
+                                <div className={`max-w-[80%] px-3 py-2 rounded-2xl shadow-sm ${isIncoming ? 'bg-gray-100 text-slate-900 rounded-bl-sm' : 'bg-blue-600 text-white rounded-br-sm'}`}>
+                                  <div className="text-sm whitespace-pre-wrap break-words">{m.content || ''}</div>
+                                  <div className={`text-[10px] mt-1 text-right ${isIncoming ? 'text-slate-500' : 'text-blue-100'}`}>{timeStr}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>

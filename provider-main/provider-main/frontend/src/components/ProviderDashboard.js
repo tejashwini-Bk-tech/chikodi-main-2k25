@@ -94,6 +94,7 @@ const ProviderDashboard = () => {
   const [msgOpen, setMsgOpen] = useState(false);
   const [msgCount, setMsgCount] = useState(0);
   const [msgItems, setMsgItems] = useState([]);
+  const [replyByMsgId, setReplyByMsgId] = useState({});
   const [profile, setProfile] = useState(null);
   const [aadhaarVal, setAadhaarVal] = useState('');
   const [panVal, setPanVal] = useState('');
@@ -199,7 +200,7 @@ useEffect(() => {
       const { data, error } = await supabase
         .from('messages')
         .select('id, booking_id, sender_id, recipient_id, content, created_at')
-        .eq('recipient_id', provider.provider_id) // Must be valid UUID
+        .or(`recipient_id.eq.${provider.provider_id},sender_id.eq.${provider.provider_id}`)
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -247,6 +248,38 @@ useEffect(() => {
     if (channel) supabase.removeChannel(channel); // Clean up subscription
   };
 }, [provider?.provider_id]);
+
+  const sendReply = async (targetUserId, bookingId, msgId) => {
+    const text = (replyByMsgId[msgId] || '').trim();
+    if (!text) return;
+    if (!provider?.provider_id) return;
+    const base = { recipient_id: targetUserId, sender_id: provider.provider_id, booking_id: bookingId };
+    try {
+      let { error } = await supabase.from('messages').insert({ ...base, content: text });
+      if (error) {
+        const msg = String(error.message || '').toLowerCase();
+        if (msg.includes('column') && msg.includes('content')) {
+          const retry = await supabase.from('messages').insert({ ...base, message: text });
+          if (retry.error) throw retry.error;
+        } else if (msg.includes('relation') && msg.includes('messages')) {
+          try { toast.error('Messages table missing'); } catch (_) {}
+          return;
+        } else {
+          throw error;
+        }
+      }
+      try { toast.success('Reply sent'); } catch (_) {}
+      // Optimistically add to chat so it appears immediately
+      setMsgItems(prev => [
+        { id: `local-${Date.now()}`, booking_id: bookingId, sender_id: provider.provider_id, recipient_id: targetUserId, content: text, created_at: new Date().toISOString() },
+        ...prev,
+      ]);
+      setReplyByMsgId(prev => ({ ...prev, [msgId]: '' }));
+    } catch (e) {
+      console.error('Reply failed:', e);
+      try { toast.error(e?.message || 'Failed to send reply'); } catch (_) {}
+    }
+  };
 
 
   const markWorkDone = async (bookingId) => {
@@ -528,23 +561,36 @@ useEffect(() => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Messages</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 text-white text-sm font-semibold">F</span>
+                      <span>Fixapp Chat</span>
+                    </DialogTitle>
                   </DialogHeader>
-                  <div className="mt-4">
+                  <div className="mt-2">
                     {msgItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No messages yet.</div>
                     ) : (
-                      <div className="divide-y space-y-4">
-                        {msgItems.map((m) => (
-                          <div key={m.id} className="py-3 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
-                              {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
-                              <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
+                      <div className="space-y-2">
+                        {msgItems.map((m) => {
+                          const isIncoming = m.sender_id && m.sender_id !== provider.provider_id;
+                          const timeStr = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                          return (
+                            <div key={m.id} className={`flex ${isIncoming ? 'justify-start' : 'justify-end'}`}>
+                              <div className={`max-w-[75%] px-3 py-2 rounded-2xl shadow-sm ${isIncoming ? 'bg-gray-100 text-gray-800 rounded-bl-sm' : 'bg-emerald-600 text-white rounded-br-sm'}`}>
+                                <div className="text-sm whitespace-pre-wrap break-words">{m.content || ''}</div>
+                                <div className={`text-[10px] mt-1 text-right ${isIncoming ? 'text-gray-500' : 'text-emerald-100'}`}>{timeStr}</div>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Input
+                                    placeholder="Reply…"
+                                    value={replyByMsgId[m.id] || ''}
+                                    onChange={(e) => setReplyByMsgId(prev => ({ ...prev, [m.id]: e.target.value }))}
+                                  />
+                                  <Button size="sm" variant={isIncoming ? 'outline' : 'secondary'} onClick={() => sendReply(m.sender_id, m.booking_id, m.id)}>Send</Button>
+                                </div>
+                              </div>
                             </div>
-                            <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
