@@ -11,6 +11,8 @@ export const translations = {
     busy: 'Busy',
     messages: 'Messages',
     language: 'Language',
+    chatbotGreeting: 'Hi! How can I help you today?',
+    chatbotPlaceholder: 'Type your message...'
   },
   kn: {
     dashboard: 'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್',
@@ -24,5 +26,7 @@ export const translations = {
     busy: 'ವ್ಯಸ್ತ',
     messages: 'ಸಂದೇಶಗಳು',
     language: 'ಭಾಷೆ',
+    chatbotGreeting: 'ಹಲೋ! ನಾನು ಇಂದು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?',
+    chatbotPlaceholder: 'ನಿಮ್ಮ ಸಂದೇಶವನ್ನು ಟೈಪ್ ಮಾಡಿ...'
   }
 };

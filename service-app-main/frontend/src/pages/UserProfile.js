@@ -600,8 +600,7 @@ const UserProfile = () => {
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-sm text-slate-600">{t('bookingId') || 'Booking ID'}</div>
-                    <div className="font-semibold truncate">{latestBooking.id}</div>
+                    <div className="font-semibold">Booking ID {(latestBooking.id || '').toString().slice(0, 8)}</div>
                     {latestBooking.scheduled_date || latestBooking.scheduled_time ? (
                       <div className="text-xs text-slate-600 mt-1">{t('when') || 'When'}: {latestBooking.scheduled_date || ''} {latestBooking.scheduled_time || ''}</div>
                     ) : null}
@@ -664,7 +663,7 @@ const UserProfile = () => {
                   return (
                     <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold">Booking ID: {b.id}</div>
+                        <div className="text-sm font-semibold">Booking ID: {(b.id || '').toString().slice(0, 8)}</div>
                         <div className="text-xs text-slate-600">Status: {b.status}</div>
                         {(b.scheduled_date || b.scheduled_time) && (
                           <div className="text-xs text-slate-600">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>

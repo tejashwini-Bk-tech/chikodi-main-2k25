@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -127,3 +127,93 @@ logger = logging.getLogger(__name__)
 async def shutdown_db_client():
     if client:
         client.close()
+
+def _generate_reply(text: str, lang: str) -> str:
+    t = text.lower()
+    greetings = {"hi", "hello", "hey", "namaste", "namaskar", "ಹಲೋ", "ನಮಸ್ಕಾರ"}
+    ask_services = any(k in t for k in ["service", "services", "provide", "book", "price", "help", "ಬುಕ್", "ಬೆಲೆ", "ಸೇವೆ", "ಸೇವೆಗಳು"]) or t in greetings
+
+    if lang == "kn":
+        if t in greetings:
+            return "ಹಲೋ! ನಾನು ಫಿಕ್ಸೋರಾ ಸಹಾಯಕ. ನಿಮಗೆ ಏನು ಸಹಾಯ ಬೇಕು? ನಮ್ಮ ಸೇವೆಗಳು: ಪ್ಲಂಬಿಂಗ್, ಎಲೆಕ್ಟ್ರಿಕಲ್, ಹೌಸ್ ಕ್ಲೀನಿಂಗ್, ಪೇಂಟಿಂಗ್. ನೀವು ಯಾವ ಸೇವೆಯನ್ನು ಹುಡುಕುತ್ತಿದ್ದೀರಿ?"
+        if "price" in t or "ಬೆಲೆ" in t:
+            return "ಬೆಲೆ ಸೇವೆಯ ಪ್ರಕಾರ ಮತ್ತು ಸ್ಥಳದ ಮೇಲೆ ಅವಲಂಬಿತವಾಗಿರುತ್ತದೆ. ನೀವು ಯಾವ ಸೇವೆ ಬೇಕು ಎಂದು ತಿಳಿಸಿದರೆ ಅಂದಾಜು ಕೊಡುತ್ತೇನೆ."
+        if "book" in t or "ಬುಕ್" in t:
+            return "ಬುಕಿಂಗ್ ಮಾಡಲು, ನೀವು ಪೂರೈಕೆದಾರರ ಪ್ರೊಫೈಲ್ ತೆರೆಯಬಹುದು ಮತ್ತು 'Book Now' ಆಯ್ಕೆಮಾಡಬಹುದು. ನೀವು ಯಾವ ಸೇವೆ ಬಯಸುತ್ತೀರಿ?"
+        if ask_services:
+            return "ನಾವು ನೀಡುವ ಜನಪ್ರಿಯ ಸೇವೆಗಳು: ಪ್ಲಂಬಿಂಗ್, ಎಲೆಕ್ಟ್ರಿಕಲ್, ಹೌಸ್ ಕ್ಲೀನಿಂಗ್, ಪೇಂಟಿಂಗ್. ಯಾವ ಸೇವೆಗೆ ಸಹಾಯ ಬೇಕು?"
+        return f"ನಾನು ಸಹಾಯ ಮಾಡಲು ಇಲ್ಲಿ ಇದ್ದೇನೆ. ನೀವು ಹೇಳಿದರು: {text}"
+    else:
+        if t in greetings:
+            return "Hi! I’m the Fixora assistant. How can I help? Popular services: Plumbing, Electrical, Home Cleaning, Painting. Which one do you need?"
+        if "price" in t or "cost" in t:
+            return "Pricing depends on service type and location. Tell me the service you need and I’ll give an estimate."
+        if "book" in t or "booking" in t:
+            return "To book, open the provider’s profile and choose 'Book Now'. Which service do you want to book?"
+        if ask_services:
+            return "We offer Plumbing, Electrical, Home Cleaning, and Painting. Which service do you need help with?"
+        return f"I am here to help. You said: {text}"
+
+async def _llm_reply(text: str, lang: str) -> str:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    system_en = (
+        "You are Fixora's helpful assistant for a local services marketplace (plumbing, electrical, home cleaning, painting). "
+        "Always reply concisely and help the user find or book providers."
+    )
+    system_kn = (
+        "ನೀವು ಫಿಕ್ಸೋರಾ ಸಹಾಯಕ. ಪ್ಲಂಬಿಂಗ್, ಎಲೆಕ್ಟ್ರಿಕಲ್, ಕ್ಲೀನಿಂಗ್, ಪೇಂಟಿಂಗ್ ಸೇವೆಗಳಿಗೆ ಸಹಾಯ ಮಾಡಿ. "
+        "ಹೆಚ್ಚು ಮಾತು ಬೇಡ, ಸ್ಪಷ್ಟವಾಗಿ ಮತ್ತು ಸಂಕ್ಷಿಪ್ತವಾಗಿ ಉತ್ತರಿಸಿ."
+    )
+    system_prompt = system_kn if lang == "kn" else system_en
+    user_prefix = "ಬಳಕೆದಾರ: " if lang == "kn" else "User: "
+
+    payload = {
+        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "temperature": 0.3,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{user_prefix}{text}"},
+        ],
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+            async with session.post(
+                "https://api.openai.com/v1/chat/completions",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            ) as resp:
+                if resp.status >= 300:
+                    txt = await resp.text()
+                    logger.warning("OpenAI error %s: %s", resp.status, txt)
+                    return None
+                data = await resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content")
+                return content or None
+    except Exception as e:
+        logger.warning("LLM call failed: %s", e)
+        return None
+
+# Real-time Chatbot WebSocket
+@app.websocket("/ws/chat")
+async def chat_ws(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            text = data.get("text", "").strip()
+            lang = data.get("lang", "en")
+            if not text:
+                await websocket.send_json({"sender": "bot", "text": ""})
+                continue
+            # Try LLM first if configured; otherwise use rule-based reply
+            reply = await _llm_reply(text, lang)
+            if not reply:
+                reply = _generate_reply(text, lang)
+            await websocket.send_json({"sender": "bot", "text": reply})
+    except WebSocketDisconnect:
+        return

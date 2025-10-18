@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, X, Send } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from './ui/button';
@@ -35,41 +35,29 @@ const Chatbot = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(() => { scrollToBottom(); }, [messages]);
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      // Initial greeting
       setTimeout(() => {
-        setMessages([{
-          id: 1,
-          text: t('chatbotGreeting'),
-          sender: 'bot',
-          timestamp: new Date()
-        }]);
-      }, 500);
+        setMessages([{ id: 1, text: t('chatbotGreeting'), sender: 'bot', timestamp: new Date() }]);
+      }, 400);
     }
   }, [isOpen, t, messages.length]);
 
-  // Setup WebSocket connection when chat opens
+  // WebSocket lifecycle
   useEffect(() => {
     if (!isOpen) {
-      if (wsRef.current) {
-        try { wsRef.current.close(); } catch {}
-      }
+      if (wsRef.current) { try { wsRef.current.close(); } catch {} }
       setConnected(false);
       return;
     }
-    if (!wsUrl) return; // no backend configured
+    if (!wsUrl) return;
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
-      ws.onopen = () => {
-        setConnected(true);
-      };
+      ws.onopen = () => setConnected(true);
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -81,15 +69,12 @@ const Chatbot = () => {
       };
       ws.onclose = () => {
         setConnected(false);
-        // attempt reconnect after short delay if still open
         if (isOpen) {
           clearTimeout(reconnectTimer.current);
           reconnectTimer.current = setTimeout(connect, 1500);
         }
       };
-      ws.onerror = () => {
-        try { ws.close(); } catch {}
-      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
     };
 
     connect();
@@ -103,17 +88,10 @@ const Chatbot = () => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
 
-    // Add user message
-    const userMessage = {
-      id: messages.length + 1,
-      text: inputMessage,
-      sender: 'user',
-      timestamp: new Date()
-    };
+    const userMessage = { id: messages.length + 1, text: inputMessage, sender: 'user', timestamp: new Date() };
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
 
-    // Send to backend if connected; otherwise keep typing animation briefly
     if (wsRef.current && connected && wsRef.current.readyState === WebSocket.OPEN) {
       setIsTyping(true);
       try {
@@ -126,62 +104,43 @@ const Chatbot = () => {
 
   return (
     <>
-      {/* Chatbot Toggle Button */}
       {!isOpen && (
         <Button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white shadow-2xl z-50 transition-all duration-300 hover:scale-110 animate-bounce"
+          className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white shadow-2xl z-50 transition-all duration-300 hover:scale-110"
         >
           <MessageCircle className="w-7 h-7" />
         </Button>
       )}
 
-      {/* Chatbot Window */}
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-96 h-[500px] z-50 shadow-2xl border-0 flex flex-col animate-in slide-in-from-right duration-300">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white p-4 rounded-t-lg flex items-center justify-between">
+        <Card className="fixed bottom-6 right-6 w-96 h-[500px] z-50 shadow-2xl border-0 flex flex-col">
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white p-4 rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Avatar className="w-10 h-10 ring-2 ring-white">
-                <AvatarFallback className="bg-white text-blue-600 font-bold">AI</AvatarFallback>
+                <AvatarFallback className="bg-white text-emerald-600 font-bold">AI</AvatarFallback>
               </Avatar>
               <div>
-                <h3 className="font-bold">ServiceHub Assistant</h3>
-                <p className="text-xs opacity-90">Online now</p>
+                <h3 className="font-bold">Fixora Assistant</h3>
+                <p className="text-xs opacity-90">{connected ? 'Online' : 'Connecting...'}</p>
               </div>
             </div>
-            <Button
-              onClick={() => setIsOpen(false)}
-              variant="ghost"
-              size="icon"
-              className="hover:bg-white/20 text-white"
-            >
+            <Button onClick={() => setIsOpen(false)} variant="ghost" size="icon" className="hover:bg-white/20 text-white">
               <X className="w-5 h-5" />
             </Button>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-900">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom duration-300`}
-              >
-                <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    message.sender === 'user'
-                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white'
-                      : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white'
-                  }`}
-                >
-                  <p className="text-sm">{message.text}</p>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-3 rounded-lg ${m.sender === 'user' ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white' : 'bg-white text-slate-900'}`}>
+                  <p className="text-sm">{m.text}</p>
                 </div>
               </div>
             ))}
-            
             {isTyping && (
-              <div className="flex justify-start animate-in fade-in duration-300">
-                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+              <div className="flex justify-start">
+                <div className="bg-white p-3 rounded-lg">
                   <div className="flex gap-1">
                     <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
                     <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
@@ -193,8 +152,7 @@ const Chatbot = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <form onSubmit={handleSendMessage} className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+          <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-slate-200">
             <div className="flex gap-2">
               <Input
                 type="text"
@@ -203,11 +161,7 @@ const Chatbot = () => {
                 placeholder={t('chatbotPlaceholder')}
                 className="flex-1"
               />
-              <Button
-                type="submit"
-                size="icon"
-                className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white transition-all duration-200 hover:scale-110"
-              >
+              <Button type="submit" size="icon" className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white">
                 <Send className="w-4 h-4" />
               </Button>
             </div>

@@ -69,7 +69,7 @@ function App() {
                 }
               />
             </Routes>
-            
+            <Chatbot />
           </BrowserRouter>
           <Toaster />
         </div>

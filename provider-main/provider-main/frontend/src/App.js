@@ -6,6 +6,7 @@ import ProviderDashboard from './components/ProviderDashboard';
 import Account from './components/Account';
 import AuthCallback from './components/AuthCallback';
 import { Toaster } from './components/ui/sonner';
+import Chatbot from './components/Chatbot';
 import Home from './components/Home';
 import Privacy from './components/Privacy';
 import Login from './components/Login';
@@ -28,6 +29,7 @@ function App() {
           <Route path="/account/:providerId" element={<Account />} />
           <Route path="/admin" element={<AdminPage />} />
           </Routes>
+          <Chatbot />
         </BrowserRouter>
         <Toaster position="top-right" />
       </div>

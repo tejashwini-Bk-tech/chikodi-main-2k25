@@ -403,7 +403,7 @@ const Dashboard = () => {
                     <div key={p.provider_id} className="py-3 flex items-center justify-between">
                       <div>
                         <div className="font-medium">{(p.professions?.[0] || 'Provider').replace('_',' ')}</div>
-                        <div className="text-xs text-slate-500">ID: {p.provider_id}</div>
+                        <div className="text-xs text-slate-500">ID: {(p.provider_id || '').toString().slice(0, 8)}</div>
                         <div className="text-xs text-slate-600 mt-1">
                           {`${p._distance_km.toFixed(1)} km away`}
                         </div>

@@ -171,7 +171,7 @@ const ProviderList = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.id}</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">ID: {(provider.id || '').toString().slice(0, 8)}</p>
                       <Badge className={provider.is_available ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'}>
                         {provider.is_available ? 'Available' : 'Busy'}
                       </Badge>

@@ -36,8 +36,7 @@ function ReviewsPanel({ providerId }) {
         }
       } catch (_) {}
     };
-
-    load();
+load();
     try {
       channel = supabase
         .channel(`realtime-reviews-${providerId}`)
@@ -503,7 +502,7 @@ useEffect(() => {
                   <DialogHeader>
                     <DialogTitle>Recent Bookings</DialogTitle>
                   </DialogHeader>
-                  <div className="mt-4">
+                  <div className="mt-2">
                     {notifItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No recent bookings.</div>
                     ) : (
@@ -513,7 +512,7 @@ useEffect(() => {
                           const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
                           const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
                           return (
-                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div key={b.id} className="pt-2 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
@@ -522,12 +521,12 @@ useEffect(() => {
                                   <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
                                 </div>
                                 <div className="mt-1 text-sm text-gray-800 truncate">
-                                  Customer: {b.user_id || 'N/A'}
+                                  Customer: {(b.user_id || 'N/A').toString().slice(0, 8)}
                                 </div>
                                 <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {b.notes && <div className="text-sm text-gray-600 mt-1">Notes: {b.notes}</div>}
                                 {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                  <div className="text-sm text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
                                 )}
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
@@ -594,6 +593,7 @@ useEffect(() => {
                       </div>
                     )}
                   </div>
+                  
                 </DialogContent>
               </Dialog>
               <Dialog>
@@ -632,10 +632,11 @@ useEffect(() => {
                                 <div className="mt-1 text-sm text-gray-800 truncate">
                                   Customer: {b.user_id || 'N/A'}
                                 </div>
+                                <div className="text-sm text-gray-700 truncate">Profession: {(provider?.professions || []).join(', ')}</div>
                                 <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {b.notes && <div className="text-sm text-gray-600 mt-1">Notes: {b.notes}</div>}
                                 {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                  <div className="text-sm text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
                                 )}
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
