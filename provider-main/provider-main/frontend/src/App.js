@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './App.css';
 import ProviderRegistration from './components/ProviderRegistration';
 import ProviderDashboard from './components/ProviderDashboard';
+import Account from './components/Account';
 import AuthCallback from './components/AuthCallback';
 import { Toaster } from './components/ui/sonner';
 import Home from './components/Home';
@@ -22,6 +23,7 @@ function App() {
           <Route path="/register/step/:step" element={<ProviderRegistration />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/dashboard/:providerId" element={<ProviderDashboard />} />
+          <Route path="/account/:providerId" element={<Account />} />
           <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </BrowserRouter>

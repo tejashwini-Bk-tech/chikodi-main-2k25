@@ -5,8 +5,9 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { toast } from 'sonner';
-import { Download, Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star, MessageSquare } from 'lucide-react';
+import { Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 function ReviewsPanel({ providerId }) {
@@ -87,7 +88,7 @@ const ProviderDashboard = () => {
   const [isTogglingAvail, setIsTogglingAvail] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [completedItems, setCompletedItems] = useState([]);
   const [notifItems, setNotifItems] = useState([]);
   const [walletSum, setWalletSum] = useState(null);
   const [msgOpen, setMsgOpen] = useState(false);
@@ -249,13 +250,16 @@ useEffect(() => {
 
 
   const markWorkDone = async (bookingId) => {
+    console.log('Marking booking as completed:', bookingId);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('bookings')
         .update({ status: 'completed' })
         .eq('id', bookingId)
-        .eq('provider_id', provider.provider_id);
+        .eq('provider_id', provider.provider_id)
+        .select();
       if (error) throw error;
+      console.log('Booking updated successfully:', data);
       toast.success('Marked as completed');
       // Refresh notifications and count
       await loadLatestBookings();
@@ -326,7 +330,11 @@ useEffect(() => {
   }, [provider?.provider_id]);
 
   const loadLatestBookings = async () => {
-    if (!provider?.provider_id) return;
+    console.log('Loading latest bookings for provider:', provider?.provider_id);
+    if (!provider?.provider_id) {
+      console.log('No provider ID available');
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('bookings')
@@ -335,11 +343,41 @@ useEffect(() => {
         .in('status', ['booked','requested'])
         .order('requested_at', { ascending: false })
         .limit(20);
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      console.log('Fetched recent bookings:', data);
       setNotifItems(data || []);
     } catch (e) {
       console.error('Failed to load bookings', e);
       toast.error('Failed to load notifications');
+    }
+  };
+
+  const loadCompletedJobs = async () => {
+    console.log('Loading completed jobs for provider:', provider?.provider_id);
+    if (!provider?.provider_id) {
+      console.log('No provider ID available for completed jobs');
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('id, user_id, status, address, notes, user_location, requested_at, scheduled_date, scheduled_time')
+        .eq('provider_id', provider.provider_id)
+        .eq('status', 'completed')
+        .order('requested_at', { ascending: false })
+        .limit(20);
+      if (error) {
+        console.error('Supabase error for completed jobs:', error);
+        throw error;
+      }
+      console.log('Fetched completed jobs:', data);
+      setCompletedItems(data || []);
+    } catch (e) {
+      console.error('Failed to load completed jobs', e);
+      toast.error('Failed to load completed jobs');
     }
   };
 
@@ -360,34 +398,6 @@ useEffect(() => {
       toast.error('Failed to update availability');
     } finally {
       setIsTogglingAvail(false);
-    }
-  };
-
-  const downloadIdCard = async () => {
-    try {
-      if (!provider?.id_card_path) {
-        toast.error('ID card not available');
-        return;
-      }
-      const isBase64 = provider.id_card_path.length > 100 && !provider.id_card_path.includes('/');
-      let href = '';
-      if (isBase64) {
-        href = `data:image/png;base64,${provider.id_card_path}`;
-      } else {
-        const { data, error } = await supabase.storage.from('provider-docs').createSignedUrl(provider.id_card_path, 60);
-        if (error) throw error;
-        href = data.signedUrl;
-      }
-      const link = document.createElement('a');
-      link.href = href;
-      link.download = `provider-id-${providerId}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('ID Card downloaded successfully');
-    } catch (error) {
-      console.error('Failed to download ID card:', error);
-      toast.error('Failed to download ID card');
     }
   };
 
@@ -432,16 +442,229 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen py-8 px-4">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm mb-8">
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-xl font-bold text-gray-800">Provider Dashboard</h1>
+              <div className="hidden md:flex items-center space-x-6 ml-8">
+                <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition">Dashboard</button>
+                <button onClick={() => navigate(`/account/${providerId}`)} className="text-sm font-medium text-gray-600 hover:text-gray-700 transition">Account</button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button type="button" onClick={() => loadLatestBookings()} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
+                    <Bell className="h-4 w-4" />
+                    <span className="hidden sm:inline">Recent</span>
+                    {notifCount > 0 && (
+                      <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-red-600 text-white">
+                        {notifCount}
+                      </span>
+                    )}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Recent Bookings</DialogTitle>
+                  </DialogHeader>
+                  <div className="mt-4">
+                    {notifItems.length === 0 ? (
+                      <div className="text-sm text-gray-600">No recent bookings.</div>
+                    ) : (
+                      <div className="divide-y space-y-4">
+                        {notifItems.map((b) => {
+                          const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
+                          const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
+                          const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
+                          return (
+                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                                    {b.status === 'booked' ? 'Booked' : 'Requested'}
+                                  </Badge>
+                                  <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
+                                </div>
+                                <div className="mt-1 text-sm text-gray-800 truncate">
+                                  Customer: {b.user_id || 'N/A'}
+                                </div>
+                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
+                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {(b.scheduled_date || b.scheduled_time) && (
+                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                )}
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                {mapsUrl ? (
+                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Open in Maps</a>
+                                ) : (
+                                  <span className="text-xs text-gray-500">No location</span>
+                                )}
+                                <button type="button" onClick={() => markWorkDone(b.id)} className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Mark Done</button>
+                                {/* Removed provider-side 'Record Payment' button; payments are initiated by user */}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button type="button" onClick={() => setMsgOpen(true)} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="hidden sm:inline">Messages</span>
+                    {msgCount > 0 && (
+                      <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
+                        {msgCount}
+                      </span>
+                    )}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Messages</DialogTitle>
+                  </DialogHeader>
+                  <div className="mt-4">
+                    {msgItems.length === 0 ? (
+                      <div className="text-sm text-gray-600">No messages yet.</div>
+                    ) : (
+                      <div className="divide-y space-y-4">
+                        {msgItems.map((m) => (
+                          <div key={m.id} className="py-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
+                              {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
+                              <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
+                            </div>
+                            <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button type="button" onClick={() => loadCompletedJobs()} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
+                    <span className="hidden sm:inline">Completed</span>
+                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-emerald-600 text-white">
+                      {completedCount}
+                    </span>
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Completed Jobs</DialogTitle>
+                  </DialogHeader>
+                  <div className="mt-4">
+                    {completedItems.length === 0 ? (
+                      <div className="text-sm text-gray-600">No completed jobs yet.</div>
+                    ) : (
+                      <div className="divide-y space-y-4">
+                        {completedItems.map((b) => {
+                          const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
+                          const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
+                          const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
+                          return (
+                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Badge className="bg-emerald-100 text-emerald-700">
+                                    Completed
+                                  </Badge>
+                                  <span className="text-xs text-gray-500">
+                                    {b.requested_at ? new Date(b.requested_at).toLocaleString() : 'Recently completed'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-sm text-gray-800 truncate">
+                                  Customer: {b.user_id || 'N/A'}
+                                </div>
+                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
+                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {(b.scheduled_date || b.scheduled_time) && (
+                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                )}
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                {mapsUrl ? (
+                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">View Location</a>
+                                ) : (
+                                  <span className="text-xs text-gray-500">No location</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button type="button" className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
+                    <Wallet className="h-4 w-4" />
+                    <span className="hidden sm:inline">Wallet</span>
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Wallet className="h-5 w-5" />
+                      Wallet Balance
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="mt-4">
+                    <div className="wallet-card p-6">
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-white/80 text-sm font-medium">Current Balance</p>
+                            <p className="text-3xl font-bold text-white" data-testid="wallet-balance">
+                              ₹{Number.isFinite(walletSum) ? walletSum.toFixed(2) : (Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00')}
+                            </p>
+                          </div>
+                          <div className="text-white/60">
+                            <Wallet className="h-8 w-8" />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-white/20">
+                          <p className="text-white/80 text-sm">Provider ID: {provider.provider_id}</p>
+                          <p className="text-white/60 text-xs mt-1">
+                            Member since {new Date(provider.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
+                <span>Logout</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
+        {/* User Info */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center space-x-4 mb-4">
             <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
               <User className="h-8 w-8 text-emerald-600" />
             </div>
             <div className="text-left">
-              <h1 className="text-3xl font-bold text-gray-800">Provider Dashboard</h1>
-              <p className="text-gray-600">Welcome back, {profile?.full_name || 'Provider'} · <span className="text-xs">ID: {provider.provider_id}</span></p>
+              <p className="text-lg text-gray-800">Welcome back, {profile?.full_name || 'Provider'}</p>
+              <p className="text-sm text-gray-600">ID: {provider.provider_id}</p>
             </div>
           </div>
           
@@ -450,353 +673,140 @@ useEffect(() => {
               ✓ Verified Provider
             </Badge>
           )}
-
-          <div className="mt-3 flex justify-center gap-3 flex-wrap">
-            <button type="button" onClick={() => { setNotifOpen(v => !v); if (!notifOpen) loadLatestBookings(); }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
-              <Bell className="h-4 w-4 text-gray-700" />
-              <span className="text-sm text-gray-700">Notifications</span>
-              {notifCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-red-600 text-white">
-                  {notifCount}
-                </span>
-              )}
-            </button>
-            <button type="button" onClick={() => setMsgOpen(v => !v)} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
-              <MessageSquare className="h-4 w-4 text-gray-700" />
-              <span className="text-sm text-gray-700">Messages</span>
-              {msgCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
-                  {msgCount}
-                </span>
-              )}
-            </button>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100">
-              <span className="text-sm text-gray-700">Completed Jobs</span>
-              <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-emerald-600 text-white">
-                {completedCount}
-              </span>
-            </div>
-            <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 transition">
-              <span className="text-sm text-gray-700">Logout</span>
-            </button>
-          </div>
         </div>
 
-        {msgOpen && (
-          <div className="max-w-6xl mx-auto mb-6">
-            <Card className="border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle>Messages</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {msgItems.length === 0 ? (
-                  <div className="text-sm text-gray-600">No messages yet.</div>
-                ) : (
-                  <div className="divide-y">
-                    {msgItems.map((m) => (
-                      <div key={m.id} className="py-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
-                          {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
-                          <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
-                        </div>
-                        <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {/* Collapsible Panels */}
 
-        {notifOpen && (
-          <div className="max-w-6xl mx-auto mb-6">
-            <Card className="border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle>Recent Bookings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {notifItems.length === 0 ? (
-                  <div className="text-sm text-gray-600">No bookings yet.</div>
-                ) : (
-                  <div className="divide-y">
-                    {notifItems.map((b) => {
-                      const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
-                      const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
-                      const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
-                      return (
-                        <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                                {b.status === 'booked' ? 'Booked' : 'Requested'}
-                              </Badge>
-                              <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
-                            </div>
-                            <div className="mt-1 text-sm text-gray-800 truncate">User: {b.user_id || 'N/A'}</div>
-                            <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                            {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
-                            {(b.scheduled_date || b.scheduled_time) && (
-                              <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
-                            )}
-                          </div>
-                          <div className="shrink-0 flex items-center gap-2">
-                            {mapsUrl ? (
-                              <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Open in Maps</a>
-                            ) : (
-                              <span className="text-xs text-gray-500">No location</span>
-                            )}
-                            <button type="button" onClick={() => markWorkDone(b.id)} className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Mark Done</button>
-                            {/* Removed provider-side 'Record Payment' button; payments are initiated by user */}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* ID Card */}
-          <div className="lg:col-span-1">
-            <Card className="id-card border-0 shadow-2xl">
-              <CardContent className="p-6">
-                <div className="text-center space-y-4">
-                  <div className="id-card-header">Service Provider ID</div>
-                  
-                  <div className="provider-id text-sm font-semibold" data-testid="provider-id-display">
-                    {provider.provider_id}
-                  </div>
-                  
-                  <Separator className="bg-white/20" />
-                  
-                  <div className="space-y-2 text-left">
-                    <div className="flex items-center space-x-2">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm">{profile?.full_name || '—'}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Phone className="h-4 w-4" />
-                      <span className="text-sm">{profile?.phone || provider.mobile_number}</span>
-                    </div>
-                    {provider.email && (
-                      <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4" />
-                        <span className="text-sm">{provider.email}</span>
-                        <Badge variant={provider.email_verified ? 'default' : 'secondary'} className="ml-2">
-                          {provider.email_verified ? 'Email Verified' : 'Email Unverified'}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <Separator className="bg-white/20" />
-                  
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold">Professions:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {provider.professions.map(profession => (
-                        <Badge key={profession} variant="secondary" className="text-xs">
-                          {profession.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {provider.qr_code && (
-                    <div className="qr-code-container">
-                      <img 
-                        src={`data:image/png;base64,${provider.qr_code}`}
-                        alt="Provider QR Code"
-                        className="w-24 h-24 mx-auto"
-                        data-testid="qr-code-image"
-                      />
-                    </div>
-                  )}
-                  
-                  <Button 
-                    onClick={downloadIdCard}
-                    className="w-full bg-white/20 hover:bg-white/30 text-white border border-white/30"
-                    data-testid="download-id-card-btn"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download ID Card
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+        <div className="max-w-4xl mx-auto space-y-6">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {!provider.is_verified && (
-              <Card className="glass-card border-0 shadow-2xl">
-                <CardHeader>
-                  <CardTitle>Identity Verification</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm text-gray-700">Aadhaar Number</label>
-                      <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-700">PAN</label>
-                      <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <Button onClick={verifyIdentity}>Verify</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            {/* Reviews (Realtime) */}
-            <ReviewsPanel providerId={provider.provider_id} />
-            {/* Availability */}
+          {!provider.is_verified && (
             <Card className="glass-card border-0 shadow-2xl">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  {provider.is_available ? (
-                    <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                  ) : (
-                    <AlertTriangle className="h-6 w-6 text-amber-600" />
-                  )}
-                  <span>Availability</span>
-                </CardTitle>
+                <CardTitle>Identity Verification</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-700">Current status:</span>
-                    <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                      {provider.is_available ? 'Available' : 'Busy'}
-                    </Badge>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm text-gray-700">Aadhaar Number</label>
+                    <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
                   </div>
-                  <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
-                    {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
-                  </Button>
+                  <div>
+                    <label className="text-sm text-gray-700">PAN</label>
+                    <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button onClick={verifyIdentity}>Verify</Button>
                 </div>
               </CardContent>
             </Card>
-            {/* Wallet */}
-            <Card className="glass-card border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Wallet className="h-6 w-6 text-purple-600" />
-                  <span>Wallet</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="wallet-card">
-                  <div className="relative z-10">
-                    <div className="flex justify-between items-start">
+          )}
+          {/* Availability */}
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                {provider.is_available ? (
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="h-6 w-6 text-amber-600" />
+                )}
+                <span>Availability</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-700">Current status:</span>
+                  <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                    {provider.is_available ? 'Available' : 'Busy'}
+                  </Badge>
+                </div>
+                <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
+                  {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          {/* Reviews (Realtime) */}
+          <ReviewsPanel providerId={provider.provider_id} />
+          {/* Professional Status */}
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Award className="h-6 w-6 text-emerald-600" />
+                <span>Professional Status</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {provider.professions.map(profession => {
+                  const status = provider.professional_status[profession];
+                  const isProfessional = status === 'Professional';
+                  return (
+                    <div key={profession} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
                       <div>
-                        <p className="text-white/80 text-sm font-medium">Current Balance</p>
-                        <p className="text-4xl font-bold text-white" data-testid="wallet-balance">
-                          ₹{Number.isFinite(walletSum) ? walletSum.toFixed(2) : (Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00')}
+                        <p className="font-semibold text-gray-800 capitalize">
+                          {profession.replace('_', ' ')}
                         </p>
                       </div>
-                      <div className="text-white/60">
-                        <Wallet className="h-8 w-8" />
+                      <div>
+                        {isProfessional ? (
+                          <Badge className="professional-badge">
+                            Professional
+                          </Badge>
+                        ) : (
+                          <Badge className="amateur-badge">
+                            Amateur/Freelancer
+                          </Badge>
+                        )}
                       </div>
                     </div>
-                    
-                    <div className="mt-6 pt-4 border-t border-white/20">
-                      <p className="text-white/80 text-sm">Provider ID: {provider.provider_id}</p>
-                      <p className="text-white/60 text-xs mt-1">
-                        Member since {new Date(provider.created_at).toLocaleDateString()}
-                      </p>
-                      {/* Removed provider-side test payment button */}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Professional Status */}
-            <Card className="glass-card border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Award className="h-6 w-6 text-emerald-600" />
-                  <span>Professional Status</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {provider.professions.map(profession => {
-                    const status = provider.professional_status[profession];
-                    const isProfessional = status === 'Professional';
-                    return (
-                      <div key={profession} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-semibold text-gray-800 capitalize">
-                            {profession.replace('_', ' ')}
-                          </p>
-                        </div>
-                        <div>
-                          {isProfessional ? (
-                            <Badge className="professional-badge">
-                              Professional
-                            </Badge>
-                          ) : (
-                            <Badge className="amateur-badge">
-                              Amateur/Freelancer
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* Documents Status */}
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Shield className="h-6 w-6 text-blue-600" />
+                <span>Document Status</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">Trade License</span>
+                  <Badge variant={provider.has_trade_license ? 'default' : 'secondary'}>
+                    {provider.has_trade_license ? '✓ Uploaded' : '✗ Not Uploaded'}
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Documents Status */}
-            <Card className="glass-card border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Shield className="h-6 w-6 text-blue-600" />
-                  <span>Document Status</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">Trade License</span>
-                    <Badge variant={provider.has_trade_license ? 'default' : 'secondary'}>
-                      {provider.has_trade_license ? '✓ Uploaded' : '✗ Not Uploaded'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">Health Permit</span>
-                    <Badge variant={provider.has_health_permit ? 'default' : 'secondary'}>
-                      {provider.has_health_permit ? '✓ Uploaded' : '✗ Not Uploaded'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">Certificates</span>
-                    <Badge variant={provider.has_certificates ? 'default' : 'secondary'}>
-                      {provider.has_certificates ? '✓ Uploaded' : '✗ Not Uploaded'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-700">ID Verification</span>
-                    <Badge className="professional-badge">
-                      ✓ Verified
-                    </Badge>
-                  </div>
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">Health Permit</span>
+                  <Badge variant={provider.has_health_permit ? 'default' : 'secondary'}>
+                    {provider.has_health_permit ? '✓ Uploaded' : '✗ Not Uploaded'}
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">Certificates</span>
+                  <Badge variant={provider.has_certificates ? 'default' : 'secondary'}>
+                    {provider.has_certificates ? '✓ Uploaded' : '✗ Not Uploaded'}
+                  </Badge>
+                </div>
+
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">ID Verification</span>
+                  <Badge className="professional-badge">
+                    ✓ Verified
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
