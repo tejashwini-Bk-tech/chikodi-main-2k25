@@ -8,6 +8,7 @@ import { Toaster } from './components/ui/sonner';
 import Home from './components/Home';
 import Privacy from './components/Privacy';
 import Login from './components/Login';
+import AdminPage from './pages/AdminPage';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/register/step/:step" element={<ProviderRegistration />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/dashboard/:providerId" element={<ProviderDashboard />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

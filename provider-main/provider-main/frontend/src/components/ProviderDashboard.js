@@ -36,25 +36,6 @@ function ReviewsPanel({ providerId }) {
       } catch (_) {}
     };
 
-  const verifyIdentity = async () => {
-    try {
-      const a = (aadhaarVal || '').replace(/\D/g, '');
-      const aOk = /^\d{12}$/.test(a);
-      const p = (panVal || '').toUpperCase().trim();
-      const pOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(p);
-      if (!aOk) { toast.error('Enter a valid 12-digit Aadhaar number'); return; }
-      if (!pOk) { toast.error('Enter a valid PAN (e.g., ABCDE1234F)'); return; }
-      const { error } = await supabase
-        .from('providers')
-        .update({ is_verified: true, verification_date: new Date().toISOString() })
-        .eq('provider_id', provider.provider_id);
-      if (error) throw error;
-      setProvider(prev => prev ? { ...prev, is_verified: true, verification_date: new Date().toISOString() } : prev);
-      toast.success('Identity verified');
-    } catch (e) {
-      toast.error('Failed to verify identity');
-    }
-  };
     load();
     try {
       channel = supabase
@@ -245,7 +226,7 @@ useEffect(() => {
           event: '*',
           schema: 'public',
           table: 'messages',
-          filter: `recipient_id=eq."${provider.provider_id}"`, // ✅ UUID must be in quotes
+          filter: `recipient_id=eq."${provider.provider_id}"`, // UUID must be in quotes
         },
         async (payload) => {
           if (payload?.eventType === 'INSERT') {
@@ -407,6 +388,26 @@ useEffect(() => {
     } catch (error) {
       console.error('Failed to download ID card:', error);
       toast.error('Failed to download ID card');
+    }
+  };
+
+  const verifyIdentity = async () => {
+    try {
+      const a = (aadhaarVal || '').replace(/\D/g, '');
+      const aOk = /^\d{12}$/.test(a);
+      const p = (panVal || '').toUpperCase().trim();
+      const pOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(p);
+      if (!aOk) { toast.error('Enter a valid 12-digit Aadhaar number'); return; }
+      if (!pOk) { toast.error('Enter a valid PAN (e.g., ABCDE1234F)'); return; }
+      const { error } = await supabase
+        .from('providers')
+        .update({ is_verified: true, verification_date: new Date().toISOString() })
+        .eq('provider_id', provider.provider_id);
+      if (error) throw error;
+      setProvider(prev => prev ? { ...prev, is_verified: true, verification_date: new Date().toISOString() } : prev);
+      toast.success('Identity verified');
+    } catch (e) {
+      toast.error('Failed to verify identity');
     }
   };
 
