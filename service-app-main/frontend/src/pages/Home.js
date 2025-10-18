@@ -34,10 +34,10 @@ const Home = () => {
       } catch (e) {
         // Fallback mock
         setOfferings([
-          { id: 'cleaning', title: 'Home Cleaning', desc: 'Deep cleaning, sanitization, and more.' },
-          { id: 'plumbing', title: 'Plumbing', desc: 'Fix leaks, install fixtures, quick repairs.' },
-          { id: 'electrical', title: 'Electrical', desc: 'Wiring, lighting, and appliance setup.' },
-          { id: 'painting', title: 'Painting', desc: 'Interior/exterior, professional finishing.' },
+          { id: 'cleaning', title: t('fallbackCleaningTitle'), desc: t('fallbackCleaningDesc') },
+          { id: 'plumbing', title: t('fallbackPlumbingTitle'), desc: t('fallbackPlumbingDesc') },
+          { id: 'electrical', title: t('fallbackElectricalTitle'), desc: t('fallbackElectricalDesc') },
+          { id: 'painting', title: t('fallbackPaintingTitle'), desc: t('fallbackPaintingDesc') },
         ]);
         setOfferingsStatus('error');
       }
@@ -130,10 +130,10 @@ const Home = () => {
       <section className="py-24 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 bg-gradient-to-r from-blue-700 via-cyan-500 to-indigo-600 bg-clip-text text-transparent">
-            FIXORA Services, On Demand
+            {t('homeHeroTitle')}
           </h1>
           <p className="text-lg md:text-2xl text-slate-600 dark:text-slate-300 mb-10 max-w-3xl mx-auto">
-            Discover trusted providers, track live locations, view real-time analytics, and chat with AI support.
+            {t('homeHeroSubtitle')}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
             {isLoggedIn ? (
@@ -143,7 +143,7 @@ const Home = () => {
                   size="lg"
                   className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium px-8 py-6 text-lg transition-all duration-300 hover:scale-105 shadow-lg"
                 >
-                  Open Dashboard
+                  {t('openDashboard')}
                 </Button>
                 <Button
                   onClick={() => navigate('/providers')}
@@ -151,7 +151,7 @@ const Home = () => {
                   variant="outline"
                   className="border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 font-medium px-8 py-6 text-lg transition-all duration-300 hover:scale-105"
                 >
-                  Find Providers
+                  {t('findProviders')}
                 </Button>
               </>
             ) : (
@@ -161,7 +161,7 @@ const Home = () => {
                   size="lg"
                   className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium px-8 py-6 text-lg transition-all duration-300 hover:scale-105 shadow-lg"
                 >
-                  Get Started
+                  {t('getStarted')}
                 </Button>
                 <Button
                   onClick={() => navigate('/signup')}
@@ -169,7 +169,7 @@ const Home = () => {
                   variant="outline"
                   className="border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 font-medium px-8 py-6 text-lg transition-all duration-300 hover:scale-105"
                 >
-                  Create Account
+                  {t('createAccount')}
                 </Button>
               </>
             )}
@@ -181,8 +181,8 @@ const Home = () => {
       <section className="py-16 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">What we offer</h2>
-            <div className="text-sm text-slate-500">Curated services tailored for you</div>
+            <h2 className="text-2xl font-bold">{t('whatWeOffer')}</h2>
+            <div className="text-sm text-slate-500">{t('curatedForYou')}</div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {offeringsStatus === 'loading' && Array.from({ length: 4 }).map((_, i) => (
@@ -206,8 +206,8 @@ const Home = () => {
           {/* Map Preview */}
           <Card className="border-0 shadow-md">
             <CardHeader>
-              <CardTitle>Live Map Interaction</CardTitle>
-              <CardDescription>Preview near you • Open full map for interaction</CardDescription>
+              <CardTitle>{t('liveMapInteraction')}</CardTitle>
+              <CardDescription>{t('liveMapPreviewDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-lg overflow-hidden border">
@@ -218,25 +218,25 @@ const Home = () => {
                     className="w-full h-64"
                   />
                 ) : (
-                  <div className="w-full h-64 flex items-center justify-center text-slate-500">Location unavailable</div>
+                  <div className="w-full h-64 flex items-center justify-center text-slate-500">{t('locationUnavailable')}</div>
                 )}
               </div>
-              <div className="mt-3 text-xs text-slate-500">Live preview. Full interaction available in the map page.</div>
+              <div className="mt-3 text-xs text-slate-500">{t('livePreviewNote')}</div>
             </CardContent>
           </Card>
 
           {/* Live Chart */}
           <Card className="border-0 shadow-md">
             <CardHeader>
-              <CardTitle>Live Activity</CardTitle>
-              <CardDescription>Users vs Providers (daily)</CardDescription>
+              <CardTitle>{t('liveActivity')}</CardTitle>
+              <CardDescription>{t('usersVsProvidersDaily')}</CardDescription>
             </CardHeader>
             <CardContent>
               <svg width="100%" height="100" viewBox="0 0 300 100" preserveAspectRatio="none">
                 <path d={chartPath} fill="none" stroke="#2563eb" strokeWidth="3" />
               </svg>
               <div className="text-xs text-slate-500 mt-2">
-                {metricsStatus === 'loading' ? 'Loading metrics…' : metricsStatus === 'error' ? 'Showing demo data' : 'Live'}
+                {metricsStatus === 'loading' ? t('loadingMetrics') : metricsStatus === 'error' ? t('showingDemoData') : t('live')}
               </div>
             </CardContent>
           </Card>
@@ -248,20 +248,20 @@ const Home = () => {
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card className="border-0 shadow hover:shadow-md transition">
             <CardHeader>
-              <CardTitle>AI Chatbot</CardTitle>
-              <CardDescription>Ask FIXORA anything about services, pricing, and bookings</CardDescription>
+              <CardTitle>{t('aiChatbot')}</CardTitle>
+              <CardDescription>{t('askFixora')}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-sm text-slate-600 dark:text-slate-300">Chat is available on every page in the bottom-right.</div>
+              <div className="text-sm text-slate-600 dark:text-slate-300">{t('chatAvailabilityNote')}</div>
             </CardContent>
           </Card>
           <Card className="border-0 shadow hover:shadow-md transition">
             <CardHeader>
-              <CardTitle>Payments</CardTitle>
-              <CardDescription>Secure payments and invoices</CardDescription>
+              <CardTitle>{t('paymentsTitle')}</CardTitle>
+              <CardDescription>{t('paymentsDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-sm text-slate-600 dark:text-slate-300">Checkout and invoices are integrated within booking flow.</div>
+              <div className="text-sm text-slate-600 dark:text-slate-300">{t('checkoutNote')}</div>
             </CardContent>
           </Card>
         </div>
@@ -302,19 +302,19 @@ const Home = () => {
               <h3 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                 10,000+
               </h3>
-              <p className="text-xl text-slate-600 dark:text-slate-300">Verified Providers</p>
+              <p className="text-xl text-slate-600 dark:text-slate-300">{t('verifiedProvidersStat')}</p>
             </div>
             <div className="animate-in fade-in slide-in-from-bottom duration-700" style={{ animationDelay: '150ms' }}>
               <h3 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                 50,000+
               </h3>
-              <p className="text-xl text-slate-600 dark:text-slate-300">Happy Customers</p>
+              <p className="text-xl text-slate-600 dark:text-slate-300">{t('happyCustomersStat')}</p>
             </div>
             <div className="animate-in fade-in slide-in-from-bottom duration-700" style={{ animationDelay: '300ms' }}>
               <h3 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                 4.9/5
               </h3>
-              <p className="text-xl text-slate-600 dark:text-slate-300">Average Rating</p>
+              <p className="text-xl text-slate-600 dark:text-slate-300">{t('averageRatingStat')}</p>
             </div>
           </div>
         </div>

@@ -287,11 +287,11 @@ const Dashboard = () => {
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight drop-shadow-sm">FIXORA</h1>
             <div className="flex items-center gap-3">
-              <span className="text-xs uppercase tracking-widest text-white/80">Service Platform</span>
+              <span className="text-xs uppercase tracking-widest text-white/80">{t('servicePlatform')}</span>
               {userId && (
                 <button onClick={() => navigate('/payments')} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition">
                   <Bell className="h-4 w-4" />
-                  <span className="text-xs">Completed</span>
+                  <span className="text-xs">{t('completed')}</span>
                   {completedCount > 0 && (
                     <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-white text-blue-700">
                       {completedCount}
@@ -301,7 +301,7 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-          <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide"> Get it done - the Fixora way! </p>
+          <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide">{t('slogan')}</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -309,7 +309,7 @@ const Dashboard = () => {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-blue-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('dashboardMap') || 'Map'}</CardTitle>
+                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('map') || 'Map'}</CardTitle>
               </div>
               <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardMapDesc') || 'View and interact with live map'}</CardDescription>
             </CardHeader>
@@ -322,7 +322,7 @@ const Dashboard = () => {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-emerald-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('dashboardAnalyses') || 'Analyses'}</CardTitle>
+                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('stats') || 'Stats'}</CardTitle>
               </div>
               <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardAnalysesDesc') || 'Real-time activity overview'}</CardDescription>
             </CardHeader>
@@ -340,7 +340,7 @@ const Dashboard = () => {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('dashboardFindProviders') || 'Find Providers'}</CardTitle>
+                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('browse') || 'Browse'}</CardTitle>
               </div>
               <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardFindProvidersDesc') || 'Browse and select providers'}</CardDescription>
             </CardHeader>
@@ -353,7 +353,7 @@ const Dashboard = () => {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-pink-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('dashboardProfile') || 'Profile'}</CardTitle>
+                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('profile') || 'Profile'}</CardTitle>
               </div>
               <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardProfileDesc') || 'Manage your details'}</CardDescription>
             </CardHeader>
@@ -367,13 +367,13 @@ const Dashboard = () => {
           {/* Map column */}
           <Card className="border-0 shadow lg:col-span-2">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">Nearby Map</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">Live markers for providers within 10 km</CardDescription>
+              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('nearbyMap')}</CardTitle>
+              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('nearbyMapDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div ref={mapEl} className="w-full h-[380px] rounded-lg overflow-hidden border bg-white" />
+              <div ref={mapEl} className="w-full h-72 rounded-lg overflow-hidden border" />
               {!userLocation && (
-                <div className="mt-3 text-sm text-slate-600">Tip: set your location in <button className="underline" onClick={() => navigate('/geolocation')}>Geolocation</button> to refine nearby results.</div>
+                <div className="mt-3 text-sm text-slate-600">{t('tipSetLocation')}</div>
               )}
             </CardContent>
           </Card>
@@ -381,21 +381,21 @@ const Dashboard = () => {
           {/* Sidebar list */}
           <Card className="border-0 shadow">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">Nearby Providers (≤ 10 km)</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">Filtered by your saved location; updates in real time</CardDescription>
+              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('nearbyProvidersTitle')}</CardTitle>
+              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('nearbyProvidersDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               {!userLocation && (
-                <div className="text-sm text-slate-600">No saved location. Set it on the <button className="underline" onClick={() => navigate('/geolocation')}>Geolocation</button> page.</div>
+                <div className="text-sm text-slate-600">{t('noSavedLocation')}</div>
               )}
               {userLocation && liveStatus === 'loading' && (
-                <div className="text-sm text-slate-600">Loading providers…</div>
+                <div className="text-sm text-slate-600">{t('loadingProviders')}</div>
               )}
               {userLocation && liveStatus === 'error' && (
-                <div className="text-sm text-red-600">Failed to load providers.</div>
+                <div className="text-sm text-red-600">{t('providersLoadFail')}</div>
               )}
               {userLocation && nearbyProviders.length === 0 && liveStatus === 'success' && (
-                <div className="text-sm text-slate-600">No providers within 10 km right now.</div>
+                <div className="text-sm text-slate-600">{t('noProvidersWithin10')}</div>
               )}
               {userLocation && nearbyProviders.length > 0 && (
                 <div className="divide-y">
@@ -410,7 +410,7 @@ const Dashboard = () => {
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-slate-500">{p.last_location_at ? new Date(p.last_location_at).toLocaleTimeString() : ''}</div>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/provider/${p.provider_id}`)}>View</Button>
+                        <Button size="sm" variant="outline" onClick={() => navigate(`/provider/${p.provider_id}`)}>{t('view')}</Button>
                       </div>
                     </div>
                   ))}
@@ -423,26 +423,26 @@ const Dashboard = () => {
         <div className="mt-10">
           <Card className="border-0 shadow">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">My Provider Profile</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">Details from Supabase providers table</CardDescription>
+              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('myProviderProfile')}</CardTitle>
+              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('providerDetailsFromSupabase')}</CardDescription>
             </CardHeader>
             <CardContent>
               {providerStatus === 'loading' && (
-                <div className="text-sm text-slate-600">Loading provider…</div>
+                <div className="text-sm text-slate-600">{t('loadingProvider')}</div>
               )}
               {providerStatus === 'unauth' && (
-                <div className="text-sm text-red-600">Please login to view your provider profile.</div>
+                <div className="text-sm text-red-600">{t('loginToViewProvider')}</div>
               )}
               {providerStatus === 'error' && (
-                <div className="text-sm text-red-600">Failed to load provider details.</div>
+                <div className="text-sm text-red-600">{t('providerLoadFail')}</div>
               )}
               {provider && (
                 <div className="space-y-2">
-                  <div className="text-sm">Provider ID: <span className="font-mono">{provider.provider_id}</span></div>
-                  <div className="text-sm">Professions: {(provider.professions || []).join(', ')}</div>
-                  <div className="text-sm">Verified: {provider.is_verified ? 'Yes' : 'No'}</div>
-                  <div className="text-sm">Location: {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'N/A'}</div>
-                  <div className="text-sm">Last Location Update: {provider.last_location_at ? new Date(provider.last_location_at).toLocaleString() : 'N/A'}</div>
+                  <div className="text-sm">{t('providerId')}: <span className="font-mono">{provider.provider_id}</span></div>
+                  <div className="text-sm">{t('professions')}: {(provider.professions || []).join(', ')}</div>
+                  <div className="text-sm">{t('verified')}: {provider.is_verified ? t('yes') : t('no')}</div>
+                  <div className="text-sm">{t('location')}: {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'N/A'}</div>
+                  <div className="text-sm">{t('lastLocationUpdate')}: {provider.last_location_at ? new Date(provider.last_location_at).toLocaleString() : 'N/A'}</div>
                   <div className="pt-2">
                     <Button variant="outline" onClick={async () => {
                       if (!('geolocation' in navigator)) { toast.error('Geolocation not supported'); return; }
@@ -452,21 +452,21 @@ const Dashboard = () => {
                           const patch = { location: { lat: latitude, lng: longitude, accuracy }, last_location_at: new Date().toISOString() };
                           const { error } = await supabase.from('providers').update(patch).eq('provider_id', provider.provider_id);
                           if (error) throw error;
-                          toast.success('Location updated');
+                          toast.success(t('locationUpdated'));
                           setProvider(prev => prev ? { ...prev, ...patch } : prev);
                         } catch (e) {
                           console.error('Failed to update location', e);
-                          toast.error('Failed to update location');
+                          toast.error(t('locationUpdateFailed'));
                         }
                       }, (err) => toast.error(err?.message || 'Failed to get location'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
                     }}>
-                      Update My Location
+                      {t('updateMyLocation')}
                     </Button>
                   </div>
                 </div>
               )}
               {!provider && providerStatus === 'success' && (
-                <div className="text-sm text-slate-600">No provider profile found for your account.</div>
+                <div className="text-sm text-slate-600">{t('noProviderProfile')}</div>
               )}
             </CardContent>
           </Card>
