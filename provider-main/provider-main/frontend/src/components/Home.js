@@ -46,7 +46,7 @@ function Home() {
               <h1 className="display-font text-5xl md:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500">Welcome to FIXORA</h1>
               <p className="mt-4 text-slate-700 dark:text-slate-300 text-lg">Fixora helps you find trusted local experts — from plumbers to mehndi artists — all in one place.<br/>Quick search, verified profiles, secure payments, and even a voice assistant to guide you.<br/><span className="font-semibold">Smart. Simple. Reliable.</span></p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Button className="h-11 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white" onClick={() => navigate('/register')}>Become a Provider</Button>
+                <Button className="h-11 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white" onClick={() => navigate('/privacy')}>Become a Provider</Button>
                 <Button variant="outline" className="h-11 px-6 border-emerald-600 text-emerald-700 hover:bg-emerald-50" onClick={() => navigate('/login')}>Provider Login</Button>
               </div>
             </div>
@@ -86,7 +86,7 @@ function Home() {
             </CardHeader>
             <CardContent>
               <p className="text-slate-700 dark:text-slate-300 mb-4">Join FIXORA and build a reliable client base. We verify, promote, and support your growth every step of the way.</p>
-              <Button className="h-11 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white" onClick={() => navigate('/register')}>Become a Provider</Button>
+              <Button className="h-11 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white" onClick={() => navigate('/privacy')}>Become a Provider</Button>
             </CardContent>
           </Card>
 
