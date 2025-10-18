@@ -441,13 +441,13 @@ useEffect(() => {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen">
       {/* Navbar */}
-      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm mb-8">
-        <div className="max-w-6xl mx-auto px-4 py-3">
+      <nav className="w-full bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold text-gray-800">Provider Dashboard</h1>
+              <h1 className="text-3xl font-bold text-gray-800">FIXORA</h1>
               <div className="hidden md:flex items-center space-x-6 ml-8">
                 <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition">Dashboard</button>
                 <button onClick={() => navigate(`/account/${providerId}`)} className="text-sm font-medium text-gray-600 hover:text-gray-700 transition">Account</button>
@@ -518,7 +518,7 @@ useEffect(() => {
                 <DialogTrigger asChild>
                   <button type="button" onClick={() => setMsgOpen(true)} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
                     <MessageSquare className="h-4 w-4" />
-                    <span className="hidden sm:inline">Messages</span>
+                    <span className="hidden sm:inline">Fixapp</span>
                     {msgCount > 0 && (
                       <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
                         {msgCount}
@@ -655,30 +655,64 @@ useEffect(() => {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto">
-        {/* User Info */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center space-x-4 mb-4">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-emerald-600" />
-            </div>
-            <div className="text-left">
-              <p className="text-lg text-gray-800">Welcome back, {profile?.full_name || 'Provider'}</p>
-              <p className="text-sm text-gray-600">ID: {provider.provider_id}</p>
-            </div>
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="max-w-4xl mx-auto">
+          {/* Page Title */}
+          <div className="text-left mb-3">
+            <h2 className="text-5xl font-bold text-emerald-600">Provider Dashboard</h2>
           </div>
-          
-          {provider.is_verified && (
-            <Badge className="professional-badge text-lg px-6 py-2" data-testid="verification-status">
-              ✓ Verified Provider
-            </Badge>
-          )}
+
+          {/* User Info */}
+          <div className="text-left mb-8">
+            <p className="text-3xl font-bold text-gray-800">Welcome back,</p>
+            
+            {provider.is_verified && (
+              <Badge className="professional-badge text-lg px-6 py-2" data-testid="verification-status">
+                ✓ Verified Provider
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Collapsible Panels */}
 
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Main Content */}
+          {/* Availability - Moved to top */}
+          <Card className="glass-card border-0 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                {provider.is_available ? (
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="h-6 w-6 text-amber-600" />
+                )}
+                <span>Availability Status</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <Badge className={`px-4 py-2 text-base font-semibold ${provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {provider.is_available ? 'Available' : 'Busy'}
+                </Badge>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600">{provider.is_available ? 'On' : 'Off'}</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={provider.is_available}
+                      onChange={toggleAvailability}
+                      disabled={isTogglingAvail}
+                      className="sr-only peer"
+                    />
+                    <div className={`w-16 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white peer-checked:w-14 peer-checked:h-7 after:content-[''] after:absolute after:top-[4px] after:left-[4px] peer-checked:after:top-[2px] peer-checked:after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 peer-checked:after:h-6 peer-checked:after:w-6 after:transition-all peer-checked:bg-green-600 ${isTogglingAvail ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
+                  </label>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Identity Verification - Moved to second position */}
           {!provider.is_verified && (
             <Card className="glass-card border-0 shadow-2xl">
               <CardHeader>
@@ -701,34 +735,7 @@ useEffect(() => {
               </CardContent>
             </Card>
           )}
-          {/* Availability */}
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                {provider.is_available ? (
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                ) : (
-                  <AlertTriangle className="h-6 w-6 text-amber-600" />
-                )}
-                <span>Availability</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-700">Current status:</span>
-                  <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                    {provider.is_available ? 'Available' : 'Busy'}
-                  </Badge>
-                </div>
-                <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
-                  {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          {/* Reviews (Realtime) */}
-          <ReviewsPanel providerId={provider.provider_id} />
+
           {/* Professional Status */}
           <Card className="glass-card border-0 shadow-2xl">
             <CardHeader>
@@ -807,6 +814,9 @@ useEffect(() => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Reviews - Moved to bottom */}
+          <ReviewsPanel providerId={provider.provider_id} />
         </div>
       </div>
     </div>
