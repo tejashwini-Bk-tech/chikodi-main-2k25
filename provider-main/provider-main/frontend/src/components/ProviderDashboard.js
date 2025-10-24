@@ -36,7 +36,8 @@ function ReviewsPanel({ providerId }) {
         }
       } catch (_) {}
     };
-load();
+
+    load();
     try {
       channel = supabase
         .channel(`realtime-reviews-${providerId}`)
@@ -93,7 +94,6 @@ const ProviderDashboard = () => {
   const [msgOpen, setMsgOpen] = useState(false);
   const [msgCount, setMsgCount] = useState(0);
   const [msgItems, setMsgItems] = useState([]);
-  const [replyByMsgId, setReplyByMsgId] = useState({});
   const [profile, setProfile] = useState(null);
   const [aadhaarVal, setAadhaarVal] = useState('');
   const [panVal, setPanVal] = useState('');
@@ -101,41 +101,6 @@ const ProviderDashboard = () => {
   useEffect(() => {
     fetchProviderData();
   }, [providerId]);
-
-  const fmtDate = (v) => {
-    if (!v) return '';
-    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-      const [y, m, d] = v.split('-');
-      return `${Number(m)}/${Number(d)}/${y}`;
-    }
-    const d = new Date(v);
-    const mm = d.getMonth() + 1;
-    const dd = d.getDate();
-    const yy = d.getFullYear();
-    return `${mm}/${dd}/${yy}`;
-  };
-
-  const fmtTime = (v) => {
-    if (!v) return '';
-    if (typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v)) {
-      const [hh, mm] = v.split(':');
-      let h = Number(hh);
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      h = h % 12; if (h === 0) h = 12;
-      return `${h}:${mm} ${ampm}`;
-    }
-    return new Date(v).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  };
-
-  const fmtDateTime = (v) => {
-    if (!v) return '';
-    return `${fmtDate(v)}, ${fmtTime(v)}`;
-  };
-
-  const fixInvalidDate = (s) => {
-    const t = String(s ?? '');
-    return t.includes('Invalid Date') ? t.replace(/Invalid Date/g, '8:30 AM') : t;
-  };
 
   const fetchProviderData = async () => {
     try {
@@ -234,7 +199,7 @@ useEffect(() => {
       const { data, error } = await supabase
         .from('messages')
         .select('id, booking_id, sender_id, recipient_id, content, created_at')
-        .or(`recipient_id.eq.${provider.provider_id},sender_id.eq.${provider.provider_id}`)
+        .eq('recipient_id', provider.provider_id) // Must be valid UUID
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -282,38 +247,6 @@ useEffect(() => {
     if (channel) supabase.removeChannel(channel); // Clean up subscription
   };
 }, [provider?.provider_id]);
-
-  const sendReply = async (targetUserId, bookingId, msgId) => {
-    const text = (replyByMsgId[msgId] || '').trim();
-    if (!text) return;
-    if (!provider?.provider_id) return;
-    const base = { recipient_id: targetUserId, sender_id: provider.provider_id, booking_id: bookingId };
-    try {
-      let { error } = await supabase.from('messages').insert({ ...base, content: text });
-      if (error) {
-        const msg = String(error.message || '').toLowerCase();
-        if (msg.includes('column') && msg.includes('content')) {
-          const retry = await supabase.from('messages').insert({ ...base, message: text });
-          if (retry.error) throw retry.error;
-        } else if (msg.includes('relation') && msg.includes('messages')) {
-          try { toast.error('Messages table missing'); } catch (_) {}
-          return;
-        } else {
-          throw error;
-        }
-      }
-      try { toast.success('Reply sent'); } catch (_) {}
-      // Optimistically add to chat so it appears immediately
-      setMsgItems(prev => [
-        { id: `local-${Date.now()}`, booking_id: bookingId, sender_id: provider.provider_id, recipient_id: targetUserId, content: text, created_at: new Date().toISOString() },
-        ...prev,
-      ]);
-      setReplyByMsgId(prev => ({ ...prev, [msgId]: '' }));
-    } catch (e) {
-      console.error('Reply failed:', e);
-      try { toast.error(e?.message || 'Failed to send reply'); } catch (_) {}
-    }
-  };
 
 
   const markWorkDone = async (bookingId) => {
@@ -508,13 +441,13 @@ useEffect(() => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen py-8 px-4">
       {/* Navbar */}
-      <nav className="w-full bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
-        <div className="px-6 py-3">
+      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm mb-8">
+        <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-3xl font-bold text-gray-800">FIXORA</h1>
+              <h1 className="text-xl font-bold text-gray-800">Provider Dashboard</h1>
               <div className="hidden md:flex items-center space-x-6 ml-8">
                 <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition">Dashboard</button>
                 <button onClick={() => navigate(`/account/${providerId}`)} className="text-sm font-medium text-gray-600 hover:text-gray-700 transition">Account</button>
@@ -537,7 +470,7 @@ useEffect(() => {
                   <DialogHeader>
                     <DialogTitle>Recent Bookings</DialogTitle>
                   </DialogHeader>
-                  <div className="mt-2">
+                  <div className="mt-4">
                     {notifItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No recent bookings.</div>
                     ) : (
@@ -547,21 +480,21 @@ useEffect(() => {
                           const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
                           const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
                           return (
-                            <div key={b.id} className="pt-2 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
                                     {b.status === 'booked' ? 'Booked' : 'Requested'}
                                   </Badge>
-                                  <span className="text-xs text-gray-500">{fixInvalidDate(fmtDateTime(b.requested_at))}</span>
+                                  <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
                                 </div>
                                 <div className="mt-1 text-sm text-gray-800 truncate">
-                                  Customer: {(b.user_id || 'N/A').toString().slice(0, 8)}
+                                  Customer: {b.user_id || 'N/A'}
                                 </div>
                                 <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-sm text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
                                 {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-sm text-gray-600 mt-1">Booked at: {fixInvalidDate(`${fmtDate(b.scheduled_date)}`)}{b.scheduled_time ? ` ${fixInvalidDate(fmtTime(b.scheduled_time))}` : ''}</div>
+                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
                                 )}
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
@@ -585,7 +518,7 @@ useEffect(() => {
                 <DialogTrigger asChild>
                   <button type="button" onClick={() => setMsgOpen(true)} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
                     <MessageSquare className="h-4 w-4" />
-                    <span className="hidden sm:inline">Fixapp</span>
+                    <span className="hidden sm:inline">Messages</span>
                     {msgCount > 0 && (
                       <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
                         {msgCount}
@@ -595,40 +528,26 @@ useEffect(() => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 text-white text-sm font-semibold">F</span>
-                      <span>Fixapp Chat</span>
-                    </DialogTitle>
+                    <DialogTitle>Messages</DialogTitle>
                   </DialogHeader>
-                  <div className="mt-2">
+                  <div className="mt-4">
                     {msgItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No messages yet.</div>
                     ) : (
-                      <div className="space-y-2">
-                        {msgItems.map((m) => {
-                          const isIncoming = m.sender_id && m.sender_id !== provider.provider_id;
-                          const timeStr = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                          return (
-                            <div key={m.id} className={`flex ${isIncoming ? 'justify-start' : 'justify-end'}`}>
-                              <div className={`max-w-[75%] px-3 py-2 rounded-2xl shadow-sm ${isIncoming ? 'bg-gray-100 text-gray-800 rounded-bl-sm' : 'bg-emerald-600 text-white rounded-br-sm'}`}>
-                                <div className="text-sm whitespace-pre-wrap break-words">{m.content || ''}</div>
-                                <div className={`text-[10px] mt-1 text-right ${isIncoming ? 'text-gray-500' : 'text-emerald-100'}`}>{timeStr}</div>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <Input
-                                    placeholder="Reply…"
-                                    value={replyByMsgId[m.id] || ''}
-                                    onChange={(e) => setReplyByMsgId(prev => ({ ...prev, [m.id]: e.target.value }))}
-                                  />
-                                  <Button size="sm" variant={isIncoming ? 'outline' : 'secondary'} onClick={() => sendReply(m.sender_id, m.booking_id, m.id)}>Send</Button>
-                                </div>
-                              </div>
+                      <div className="divide-y space-y-4">
+                        {msgItems.map((m) => (
+                          <div key={m.id} className="py-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
+                              {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
+                              <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
                             </div>
-                          );
-                        })}
+                            <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
-                  
                 </DialogContent>
               </Dialog>
               <Dialog>
@@ -642,50 +561,43 @@ useEffect(() => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold">Completed Jobs</DialogTitle>
+                    <DialogTitle>Completed Jobs</DialogTitle>
                   </DialogHeader>
                   <div className="mt-4">
                     {completedItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No completed jobs yet.</div>
                     ) : (
                       <div className="divide-y space-y-4">
-                      {completedItems.map((b) => {
+                        {completedItems.map((b) => {
                           const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
                           const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
                           const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
                           return (
-                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                              <div className="min-w-0 w-full">
+                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <Badge className="bg-emerald-100 text-emerald-700">Completed</Badge>
-                                  <span className="text-xs text-gray-500">{b.requested_at ? fixInvalidDate(`Job Done: ${fmtDateTime(b.requested_at)}`) : 'Recently completed'}</span>
+                                  <Badge className="bg-emerald-100 text-emerald-700">
+                                    Completed
+                                  </Badge>
+                                  <span className="text-xs text-gray-500">
+                                    {b.requested_at ? new Date(b.requested_at).toLocaleString() : 'Recently completed'}
+                                  </span>
                                 </div>
-                                <div className="mt-2 space-y-1 text-sm">
-                                  <div className="truncate">
-                                    <span className="font-medium text-slate-700">Customer:</span>
-                                    <span className="ml-2 font-mono text-slate-800">{(b.user_id || 'N/A').toString().slice(0, 8)}</span>
-                                  </div>
-                                  <div className="truncate">
-                                    <span className="font-medium text-slate-700">Profession:</span>
-                                    <span className="ml-2 font-mono text-slate-800">{(provider?.professions || []).join(', ') || 'N/A'}</span>
-                                  </div>
-                                  <div className="truncate">
-                                    <span className="font-medium text-slate-700">Address:</span>
-                                    <span className="ml-2 font-mono text-slate-800">{b.address || 'N/A'}</span>
-                                  </div>
-                                  {(b.scheduled_date || b.scheduled_time) && (
-                                    <div className="truncate">
-                                      <span className="font-medium text-slate-700">Booked at:</span>
-                                      <span className="ml-2 font-mono text-slate-800">{fixInvalidDate(`${fmtDate(b.scheduled_date)}${b.scheduled_time ? ` ${fmtTime(b.scheduled_time)}` : ''}`)}</span>
-                                    </div>
-                                  )}
-                                  {b.notes && (
-                                    <div className="truncate">
-                                      <span className="font-medium text-slate-700">Notes:</span>
-                                      <span className="ml-2 text-slate-700">{b.notes}</span>
-                                    </div>
-                                  )}
+                                <div className="mt-1 text-sm text-gray-800 truncate">
+                                  Customer: {b.user_id || 'N/A'}
                                 </div>
+                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
+                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
+                                {(b.scheduled_date || b.scheduled_time) && (
+                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                )}
+                              </div>
+                              <div className="shrink-0 flex items-center gap-2">
+                                {mapsUrl ? (
+                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">View Location</a>
+                                ) : (
+                                  <span className="text-xs text-gray-500">No location</span>
+                                )}
                               </div>
                             </div>
                           );
@@ -743,30 +655,53 @@ useEffect(() => {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Page Title */}
-          <div className="text-left mb-3">
-            <h2 className="text-5xl font-bold text-emerald-600">Provider Dashboard</h2>
+      <div className="max-w-6xl mx-auto">
+        {/* User Info */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center space-x-4 mb-4">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-lg text-gray-800">Welcome back, {profile?.full_name || 'Provider'}</p>
+              <p className="text-sm text-gray-600">ID: {provider.provider_id}</p>
+            </div>
           </div>
-
-          {/* User Info */}
-          <div className="text-left mb-8">
-            <p className="text-3xl font-bold text-gray-800">Welcome back,</p>
-            
-            {provider.is_verified && (
-              <Badge className="professional-badge text-lg px-6 py-2" data-testid="verification-status">
-                ✓ Verified Provider
-              </Badge>
-            )}
-          </div>
+          
+          {provider.is_verified && (
+            <Badge className="professional-badge text-lg px-6 py-2" data-testid="verification-status">
+              ✓ Verified Provider
+            </Badge>
+          )}
         </div>
 
         {/* Collapsible Panels */}
 
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Main Content */}
-          {/* Availability - Moved to top */}
+          {!provider.is_verified && (
+            <Card className="glass-card border-0 shadow-2xl">
+              <CardHeader>
+                <CardTitle>Identity Verification</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm text-gray-700">Aadhaar Number</label>
+                    <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-700">PAN</label>
+                    <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button onClick={verifyIdentity}>Verify</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {/* Availability */}
           <Card className="glass-card border-0 shadow-2xl">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
@@ -775,33 +710,25 @@ useEffect(() => {
                 ) : (
                   <AlertTriangle className="h-6 w-6 text-amber-600" />
                 )}
-                <span>Availability Status</span>
+                <span>Availability</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <Badge className={`px-4 py-2 text-base font-semibold ${provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {provider.is_available ? 'Available' : 'Busy'}
-                </Badge>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600">{provider.is_available ? 'On' : 'Off'}</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={provider.is_available}
-                      onChange={toggleAvailability}
-                      disabled={isTogglingAvail}
-                      className="sr-only peer"
-                    />
-                    <div className={`w-16 h-8 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white peer-checked:w-14 peer-checked:h-7 after:content-[''] after:absolute after:top-[4px] after:left-[4px] peer-checked:after:top-[2px] peer-checked:after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 peer-checked:after:h-6 peer-checked:after:w-6 after:transition-all peer-checked:bg-green-600 ${isTogglingAvail ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
-                  </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-700">Current status:</span>
+                  <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                    {provider.is_available ? 'Available' : 'Busy'}
+                  </Badge>
                 </div>
+                <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
+                  {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
+                </Button>
               </div>
             </CardContent>
           </Card>
-
-          
-
+          {/* Reviews (Realtime) */}
+          <ReviewsPanel providerId={provider.provider_id} />
           {/* Professional Status */}
           <Card className="glass-card border-0 shadow-2xl">
             <CardHeader>
@@ -880,9 +807,6 @@ useEffect(() => {
               </div>
             </CardContent>
           </Card>
-
-          {/* Reviews - Moved to bottom */}
-          <ReviewsPanel providerId={provider.provider_id} />
         </div>
       </div>
     </div>
