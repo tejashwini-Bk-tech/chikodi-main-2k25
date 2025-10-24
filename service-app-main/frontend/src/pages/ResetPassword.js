@@ -32,7 +32,9 @@ const ResetPassword = () => {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
       toast.success('Password updated', { description: 'You can now log in with your new password' });
-      setTimeout(() => navigate('/login', { replace: true }), 800);
+      try { await supabase.auth.signOut(); } catch (_) {}
+      try { localStorage.removeItem('user'); } catch (_) {}
+      navigate('/login', { replace: true });
     } catch (err) {
       toast.error('Reset failed', { description: String(err?.message || err) });
     } finally {
