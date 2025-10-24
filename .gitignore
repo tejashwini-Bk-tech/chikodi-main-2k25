@@ -1,0 +1,11 @@
+# secrets
+.env
+*.env
+*/.env
+
+# common
+node_modules/
+.venv/
+venv/
+.env.local
+.env.*.local
