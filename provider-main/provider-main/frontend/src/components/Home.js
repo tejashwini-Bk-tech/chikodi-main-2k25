@@ -74,7 +74,7 @@ function Home() {
               <CardTitle className="text-2xl">Why FIXORA?</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-slate-700 dark:text-slate-300">Fixora is like “Urban Company for smaller cities.” Find verified local professionals, check ratings, connect instantly, pay securely, and even use our voice assistant to get things done faster.</p>
+              <p className="text-slate-700 dark:text-slate-300">Finding reliable local help should be quickand effortless.Fixora lets your discover verified professionals,check reviews,book instantly,make secure payments,and also gives you the best marketplace rate. </p>
             </CardContent>
           </Card>
         </div>

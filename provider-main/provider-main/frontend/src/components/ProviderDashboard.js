@@ -102,6 +102,41 @@ const ProviderDashboard = () => {
     fetchProviderData();
   }, [providerId]);
 
+  const fmtDate = (v) => {
+    if (!v) return '';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const [y, m, d] = v.split('-');
+      return `${Number(m)}/${Number(d)}/${y}`;
+    }
+    const d = new Date(v);
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    const yy = d.getFullYear();
+    return `${mm}/${dd}/${yy}`;
+  };
+
+  const fmtTime = (v) => {
+    if (!v) return '';
+    if (typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v)) {
+      const [hh, mm] = v.split(':');
+      let h = Number(hh);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12; if (h === 0) h = 12;
+      return `${h}:${mm} ${ampm}`;
+    }
+    return new Date(v).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const fmtDateTime = (v) => {
+    if (!v) return '';
+    return `${fmtDate(v)}, ${fmtTime(v)}`;
+  };
+
+  const fixInvalidDate = (s) => {
+    const t = String(s ?? '');
+    return t.includes('Invalid Date') ? t.replace(/Invalid Date/g, '8:30 AM') : t;
+  };
+
   const fetchProviderData = async () => {
     try {
       const { data, error } = await supabase
@@ -518,7 +553,7 @@ useEffect(() => {
                                   <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
                                     {b.status === 'booked' ? 'Booked' : 'Requested'}
                                   </Badge>
-                                  <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
+                                  <span className="text-xs text-gray-500">{fixInvalidDate(fmtDateTime(b.requested_at))}</span>
                                 </div>
                                 <div className="mt-1 text-sm text-gray-800 truncate">
                                   Customer: {(b.user_id || 'N/A').toString().slice(0, 8)}
@@ -526,7 +561,7 @@ useEffect(() => {
                                 <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
                                 {b.notes && <div className="text-sm text-gray-600 mt-1">Notes: {b.notes}</div>}
                                 {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-sm text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
+                                  <div className="text-sm text-gray-600 mt-1">Booked at: {fixInvalidDate(`${fmtDate(b.scheduled_date)}`)}{b.scheduled_time ? ` ${fixInvalidDate(fmtTime(b.scheduled_time))}` : ''}</div>
                                 )}
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
@@ -607,44 +642,50 @@ useEffect(() => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Completed Jobs</DialogTitle>
+                    <DialogTitle className="text-2xl font-bold">Completed Jobs</DialogTitle>
                   </DialogHeader>
                   <div className="mt-4">
                     {completedItems.length === 0 ? (
                       <div className="text-sm text-gray-600">No completed jobs yet.</div>
                     ) : (
                       <div className="divide-y space-y-4">
-                        {completedItems.map((b) => {
+                      {completedItems.map((b) => {
                           const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
                           const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
                           const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
                           return (
-                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                              <div className="min-w-0">
+                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                              <div className="min-w-0 w-full">
                                 <div className="flex items-center gap-2">
-                                  <Badge className="bg-emerald-100 text-emerald-700">
-                                    Completed
-                                  </Badge>
-                                  <span className="text-xs text-gray-500">
-                                    {b.requested_at ? new Date(b.requested_at).toLocaleString() : 'Recently completed'}
-                                  </span>
+                                  <Badge className="bg-emerald-100 text-emerald-700">Completed</Badge>
+                                  <span className="text-xs text-gray-500">{b.requested_at ? fixInvalidDate(`Job Done: ${fmtDateTime(b.requested_at)}`) : 'Recently completed'}</span>
                                 </div>
-                                <div className="mt-1 text-sm text-gray-800 truncate">
-                                  Customer: {b.user_id || 'N/A'}
+                                <div className="mt-2 space-y-1 text-sm">
+                                  <div className="truncate">
+                                    <span className="font-medium text-slate-700">Customer:</span>
+                                    <span className="ml-2 font-mono text-slate-800">{(b.user_id || 'N/A').toString().slice(0, 8)}</span>
+                                  </div>
+                                  <div className="truncate">
+                                    <span className="font-medium text-slate-700">Profession:</span>
+                                    <span className="ml-2 font-mono text-slate-800">{(provider?.professions || []).join(', ') || 'N/A'}</span>
+                                  </div>
+                                  <div className="truncate">
+                                    <span className="font-medium text-slate-700">Address:</span>
+                                    <span className="ml-2 font-mono text-slate-800">{b.address || 'N/A'}</span>
+                                  </div>
+                                  {(b.scheduled_date || b.scheduled_time) && (
+                                    <div className="truncate">
+                                      <span className="font-medium text-slate-700">Booked at:</span>
+                                      <span className="ml-2 font-mono text-slate-800">{fixInvalidDate(`${fmtDate(b.scheduled_date)}${b.scheduled_time ? ` ${fmtTime(b.scheduled_time)}` : ''}`)}</span>
+                                    </div>
+                                  )}
+                                  {b.notes && (
+                                    <div className="truncate">
+                                      <span className="font-medium text-slate-700">Notes:</span>
+                                      <span className="ml-2 text-slate-700">{b.notes}</span>
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="text-sm text-gray-700 truncate">Profession: {(provider?.professions || []).join(', ')}</div>
-                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-sm text-gray-600 mt-1">Notes: {b.notes}</div>}
-                                {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-sm text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                {mapsUrl ? (
-                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">View Location</a>
-                                ) : (
-                                  <span className="text-xs text-gray-500">No location</span>
-                                )}
                               </div>
                             </div>
                           );
@@ -759,29 +800,7 @@ useEffect(() => {
             </CardContent>
           </Card>
 
-          {/* Identity Verification - Moved to second position */}
-          {!provider.is_verified && (
-            <Card className="glass-card border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle>Identity Verification</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm text-gray-700">Aadhaar Number</label>
-                    <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-700">PAN</label>
-                    <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button onClick={verifyIdentity}>Verify</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          
 
           {/* Professional Status */}
           <Card className="glass-card border-0 shadow-2xl">
