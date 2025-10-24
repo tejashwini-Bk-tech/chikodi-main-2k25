@@ -59,8 +59,8 @@ const OTPVerification = () => {
     }
     (async () => {
       try {
-        await axios.post('https://heytejuu.app.n8n.cloud/webhook/otp-send', {
-          mobile_number: contact
+        await axios.post('/api/otp-send', {
+          phone: contact
         }, { headers: { 'Content-Type': 'application/json' } });
         setOtp(['', '', '', '', '', '']);
         setCountdown(60);
@@ -79,11 +79,12 @@ const OTPVerification = () => {
     if (otpValue.length === 6) {
       (async () => {
         try {
-          const response = await axios.post('https://heytejuu.app.n8n.cloud/webhook/validate', {
-            mobile_number: contact,
-            otp: otpValue
+          const response = await axios.post('/api/otp-verify', {
+            phone: contact,
+            code: otpValue
           }, { headers: { 'Content-Type': 'application/json' } });
-          if (response?.data?.verified) {
+          const verified = response?.data?.valid || response?.data?.status === 'approved';
+          if (verified) {
             toast.success('Verification Successful!', { description: 'Your phone number has been verified' });
             localStorage.setItem('isVerified', 'true');
             // If a session exists, update the profile immediately
@@ -119,8 +120,8 @@ const OTPVerification = () => {
     if (!contact) return;
     (async () => {
       try {
-        await axios.post('https://heytejuu.app.n8n.cloud/webhook/otp-send', {
-          mobile_number: contact
+        await axios.post('/api/otp-send', {
+          phone: contact
         }, { headers: { 'Content-Type': 'application/json' } });
         setCountdown(60);
         setCanResend(false);
