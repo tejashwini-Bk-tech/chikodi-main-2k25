@@ -7,7 +7,7 @@ import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
-const Login = () => {
+const Login = ({ redirectTo, embedded = false, title = 'Provider Login' }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -52,12 +52,12 @@ const Login = () => {
             .eq('user_id', user.id)
             .maybeSingle();
           if (!provErr && prov?.provider_id) {
-            navigate(`/dashboard/${prov.provider_id}`, { replace: true });
+            navigate('/', { replace: true });
             return;
           }
         }
-      } catch (_) {}
-      const fallback = location.state?.redirect || '/register/step/1';
+      } catch (_) { }
+      const fallback = redirectTo || location.state?.redirect || '/register/step/1';
       navigate(fallback, { replace: true });
     } catch (err) {
       toast.error(err?.message || 'Login failed');
@@ -89,12 +89,12 @@ const Login = () => {
               .eq('user_id', user.id)
               .maybeSingle();
             if (!provErr && prov?.provider_id) {
-              navigate(`/dashboard/${prov.provider_id}`, { replace: true });
+              navigate('/', { replace: true });
               return;
             }
           }
-        } catch (_) {}
-        const fallback = location.state?.redirect || '/register/step/1';
+        } catch (_) { }
+        const fallback = redirectTo || location.state?.redirect || '/register/step/1';
         navigate(fallback, { replace: true });
       }
     } catch (err) {
@@ -105,10 +105,10 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className={`${embedded ? '' : 'min-h-screen '}flex items-center justify-center p-4`}>
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Provider Login</CardTitle>
+          <CardTitle className="text-2xl font-bold">{title}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">

@@ -43,7 +43,7 @@ const AuthCallback = () => {
         // Clean up URL (after we've captured the type)
         try {
           window.history.replaceState({}, document.title, `${window.location.origin}/auth/callback`);
-        } catch {}
+        } catch { }
 
         if (sessionError) {
           toast({ title: 'Verification', description: sessionError.message, variant: 'destructive' });
@@ -80,8 +80,8 @@ const AuthCallback = () => {
               localStorage.setItem('role', roleFromDb);
               localStorage.setItem('isVerified', 'true');
               toast({ title: 'Signed in with Google', description: 'Welcome!', variant: 'default' });
-              const providerUrl = process.env.REACT_APP_PROVIDER_URL;
-              if (roleFromDb === 'provider' && providerUrl) {
+              const providerUrl = process.env.REACT_APP_PROVIDER_URL || '/register/step/1';
+              if (roleFromDb === 'provider') {
                 window.location.href = providerUrl;
               } else {
                 navigate('/dashboard', { replace: true });

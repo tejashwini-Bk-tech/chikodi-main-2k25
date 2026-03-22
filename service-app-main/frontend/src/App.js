@@ -6,11 +6,11 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { Toaster } from './components/ui/sonner';
 import Navbar from './components/Navbar';
 import Chatbot from './components/Chatbot';
+import MainHome from './pages/MainHome';
 import Home from './pages/Home';
 import Signup from './pages/Signup';
-import Login from './pages/Login';
+// import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
-import OTPVerification from './pages/OTPVerification';
 import Geolocation from './pages/Geolocation';
 import ProviderList from './pages/ProviderList';
 import ProviderProfile from './pages/ProviderProfile';
@@ -18,6 +18,7 @@ import BookNow from './pages/BookNow';
 import UserProfile from './pages/UserProfile';
 import Payments from './pages/Payments';
 import Dashboard from './pages/Dashboard';
+import RoleSelection from './pages/RoleSelection';
 import AuthCallback from './pages/AuthCallback';
 import ResetPassword from './pages/ResetPassword';
 
@@ -28,7 +29,7 @@ const RequireAuth = ({ children }) => {
 
 const ConditionalNavbar = () => {
   const location = useLocation();
-  const hideNavbar = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/verify-otp';
+  const hideNavbar = location.pathname === '/login' || location.pathname === '/signup';
   return hideNavbar ? null : <Navbar />;
 };
 
@@ -40,13 +41,14 @@ function App() {
           <BrowserRouter>
             <ConditionalNavbar />
             <Routes>
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<MainHome />} />
+              <Route path="/home" element={<Home />} />
+              <Route path="/role-selection" element={<RoleSelection />} />
               <Route path="/signup" element={<Signup />} />
-              <Route path="/login" element={<Login />} />
+              {/* <Route path="/login" element={<Login />} /> */}
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/verify-otp" element={<OTPVerification />} />
               <Route path="/geolocation" element={<Geolocation />} />
               <Route
                 path="/providers"

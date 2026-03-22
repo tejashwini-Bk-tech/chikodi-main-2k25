@@ -8,7 +8,7 @@ import { Separator } from './ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { toast } from 'sonner';
 import { Download, User, MapPin, Phone, Mail, Award, Shield, QrCode, ArrowLeft, Edit, Check, X } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, PROVIDER_DOCS_BUCKET } from '../lib/supabaseClient';
 
 function Account() {
   const { providerId } = useParams();
@@ -122,7 +122,7 @@ function Account() {
       if (isBase64) {
         href = `data:image/png;base64,${provider.id_card_path}`;
       } else {
-        const { data, error } = await supabase.storage.from('provider-docs').createSignedUrl(provider.id_card_path, 60);
+        const { data, error } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(provider.id_card_path, 60);
         if (error) throw error;
         href = data.signedUrl;
       }

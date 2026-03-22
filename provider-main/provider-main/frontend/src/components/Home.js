@@ -15,25 +15,27 @@ function Home() {
     { src: '/images/plumber.jpg', label: 'Plumber' },
   ];
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user || null;
-        if (!user) return;
-        const { data: p, error } = await supabase
-          .from('providers')
-          .select('provider_id, user_id, is_available')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (!cancelled && !error && p?.provider_id && p.is_available) {
-          navigate(`/dashboard/${p.provider_id}`, { replace: true });
-        }
-      } catch (_) {}
-    })();
-    return () => { cancelled = true; };
-  }, [navigate]);
+  // Removed auto-redirect for logged-in users; they stay on home page after login
+
+  // useEffect(() => {
+  //   let cancelled = false;
+  //   (async () => {
+  //     try {
+  //       const { data: sessionData } = await supabase.auth.getSession();
+  //       const user = sessionData?.session?.user || null;
+  //       if (!user) return;
+  //       const { data: p, error } = await supabase
+  //         .from('providers')
+  //         .select('provider_id, user_id, is_available')
+  //         .eq('user_id', user.id)
+  //         .maybeSingle();
+  //       if (!cancelled && !error && p?.provider_id && p.is_available) {
+  //         navigate(`/dashboard/${p.provider_id}`, { replace: true });
+  //       }
+  //     } catch (_) {}
+  //   })();
+  //   return () => { cancelled = true; };
+  // }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-slate-900 dark:via-slate-950 dark:to-black py-12 px-6">
@@ -44,10 +46,10 @@ function Home() {
           <div className="relative z-10 grid md:grid-cols-1 gap-8 items-center">
             <div>
               <h1 className="display-font text-5xl md:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500">Welcome to FIXORA</h1>
-              <p className="mt-4 text-slate-700 dark:text-slate-300 text-lg">Fixora helps you find trusted local experts — from plumbers to mehndi artists — all in one place.<br/>Quick search, verified profiles, secure payments, and even a voice assistant to guide you.<br/><span className="font-semibold">Smart. Simple. Reliable.</span></p>
+              <p className="mt-4 text-slate-700 dark:text-slate-300 text-lg">Fixora helps you find trusted local experts — from plumbers to mehndi artists — all in one place.<br />Quick search, verified profiles, secure payments, and even a voice assistant to guide you.<br /><span className="font-semibold">Smart. Simple. Reliable.</span></p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Button className="h-11 px-6 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white" onClick={() => navigate('/privacy')}>Become a Provider</Button>
-                <Button variant="outline" className="h-11 px-6 border-emerald-600 text-emerald-700 hover:bg-emerald-50" onClick={() => navigate('/login')}>Provider Login</Button>
+                <Button variant="outline" className="h-11 px-6 border-emerald-600 text-emerald-700 hover:bg-emerald-50" onClick={() => navigate('/register/step/1')}>Get Started</Button>
               </div>
             </div>
           </div>
@@ -56,8 +58,8 @@ function Home() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-8">
           {gridImages.map((img, index) => (
             <div key={index} className="relative group overflow-hidden rounded-lg shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105">
-              <img 
-                src={img.src} 
+              <img
+                src={img.src}
                 alt={img.label}
                 className="w-full h-48 object-cover brightness-90 group-hover:brightness-75 transition-all duration-300"
               />

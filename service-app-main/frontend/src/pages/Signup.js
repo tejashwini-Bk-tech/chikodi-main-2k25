@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from '../components/ui/button';
@@ -29,12 +29,19 @@ const Signup = () => {
   const [suggestedPw, setSuggestedPw] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const location = useLocation();
+
   useEffect(() => {
+    const queryRole = new URLSearchParams(location.search).get('role');
+    if (queryRole === 'provider' || queryRole === 'user') {
+      setRole(queryRole);
+    }
+
     // Sequential animation for fields
     setTimeout(() => setFieldVisible(prev => ({ ...prev, fullName: true })), 100);
     setTimeout(() => setFieldVisible(prev => ({ ...prev, emailOrPhone: true })), 300);
     setTimeout(() => setFieldVisible(prev => ({ ...prev, password: true })), 500);
-  }, []);
+  }, [location.search]);
 
   useEffect(() => {
     // Check if all fields are filled (fullName, email, password)
@@ -77,74 +84,80 @@ const Signup = () => {
     setShowPwSuggestion(false);
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  toast('Creating account...');
-  const full_name = (formData.fullName || '').trim();
-  const email = (formData.email || '').trim();
-  const password = formData.password || '';
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!full_name) {
-    toast.error('Full name required', { description: 'Please enter your full name.' });
-    return;
-  }
-  if (!emailValid) {
-    toast.error('Invalid email', { description: 'Please enter a valid email address.' });
-    return;
-  }
-  if (password.length < 8) {
-    toast.error('Weak password', { description: 'Use at least 8 characters.' });
-    return;
-  }
-  try {
-    
-
-    // ✅ Sign up user (Supabase handles existing/unconfirmed cases)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: { full_name, role },
-      },
-    });
-
-    if (error) {
-      const msg = (error.message || '').toLowerCase();
-      if (msg.includes('already registered')) {
-        toast.error('Signup failed', {
-          description: 'User already exists with this email. Please log in instead.',
-        });
-      } else {
-        toast.error('Signup failed', {
-          description: error.message,
-        });
-      }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    toast('Creating account...');
+    const full_name = (formData.fullName || '').trim();
+    const email = (formData.email || '').trim();
+    const password = formData.password || '';
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!full_name) {
+      toast.error('Full name required', { description: 'Please enter your full name.' });
       return;
     }
+    if (!emailValid) {
+      toast.error('Invalid email', { description: 'Please enter a valid email address.' });
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Weak password', { description: 'Use at least 8 characters.' });
+      return;
+    }
+    try {
 
-    // ✅ If user exists but unconfirmed, Supabase returns user with empty identities -> verification resent
-    const wasExistingUnconfirmed = Array.isArray(data?.user?.identities) && data.user.identities.length === 0;
-    if (wasExistingUnconfirmed) {
-      toast('email alreay exist!!', {
-        description: 'This email is already registered.',
+
+      // ✅ Sign up user (Supabase handles existing/unconfirmed cases)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: { full_name, role },
+        },
       });
-    } else {
+
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('already registered')) {
+          toast.error('Signup failed', {
+            description: 'User already exists with this email. Please log in instead.',
+          });
+        } else {
+          toast.error('Signup failed', {
+            description: error.message,
+          });
+        }
+        return;
+      }
+
+      // ✅ If user exists but unconfirmed, Supabase returns user with empty identities -> verification resent
+      const wasExistingUnconfirmed = Array.isArray(data?.user?.identities) && data.user.identities.length === 0;
+      if (wasExistingUnconfirmed) {
+        toast('email alreay exist!!', {
+          description: 'This email is already registered.',
+        });
+      } else {
+        toast.success('Verification email sent', {
+          description: 'Please verify your email to activate your account.',
+        });
+      }
+
+      // Navigate to login after notifying the user
       toast.success('Verification email sent', {
-        description: 'Please verify your email to activate your account.',
+        description: 'Please verify your email and then log in.',
+      });
+      setTimeout(() => {
+        navigate('/login');
+      }, 1500);
+    } catch (err) {
+      toast.error('Signup error', {
+        description: String(err),
       });
     }
-
-    // ❌ Do NOT navigate yet — wait until verification link is clicked
-  } catch (err) {
-    toast.error('Signup error', {
-      description: String(err),
-    });
-  }
-};
+  };
 
 
- 
+
 
   return (
     <div className="min-h-screen pt-20 pb-12 px-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -191,11 +204,10 @@ const handleSubmit = async (e) => {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Full Name Field */}
               <div
-                className={`transition-all duration-500 transform ${
-                  fieldVisible.fullName
+                className={`transition-all duration-500 transform ${fieldVisible.fullName
                     ? 'translate-x-0 opacity-100'
                     : '-translate-x-8 opacity-0'
-                }`}
+                  }`}
               >
                 <Label htmlFor="fullName" className="text-sm font-medium">
                   {t('fullName')}
@@ -213,11 +225,10 @@ const handleSubmit = async (e) => {
 
               {/* Email Field */}
               <div
-                className={`transition-all duration-500 transform ${
-                  fieldVisible.emailOrPhone
+                className={`transition-all duration-500 transform ${fieldVisible.emailOrPhone
                     ? 'translate-x-0 opacity-100'
                     : '-translate-x-8 opacity-0'
-                }`}
+                  }`}
               >
                 <Label htmlFor="email" className="text-sm font-medium">Email</Label>
                 <Input
@@ -235,11 +246,10 @@ const handleSubmit = async (e) => {
 
               {/* Password Field */}
               <div
-                className={`transition-all duration-500 transform ${
-                  fieldVisible.password
+                className={`transition-all duration-500 transform ${fieldVisible.password
                     ? 'translate-x-0 opacity-100'
                     : '-translate-x-8 opacity-0'
-                }`}
+                  }`}
               >
                 <Label htmlFor="password" className="text-sm font-medium">
                   {t('password')}
@@ -281,9 +291,8 @@ const handleSubmit = async (e) => {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className={`w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 ${
-                  allFieldsFilled ? 'animate-pulse [animation-duration:2.5s]' : ''
-                } hover:scale-[1.02]`}
+                className={`w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 ${allFieldsFilled ? 'animate-pulse [animation-duration:2.5s]' : ''
+                  } hover:scale-[1.02]`}
               >
                 {t('signupButton')}
               </Button>
@@ -301,7 +310,7 @@ const handleSubmit = async (e) => {
               </div>
             </div>
 
-            
+
 
             {/* Login Link */}
             <div className="mt-6 text-center animate-in fade-in duration-700 delay-700">

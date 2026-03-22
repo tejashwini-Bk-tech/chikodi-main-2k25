@@ -1,0 +1,21 @@
+# Environment Variables for FIXORA
+# Copy this content to your .env files
+
+# Supabase Configuration (REQUIRED)
+REACT_APP_SUPABASE_URL=your_supabase_project_url
+REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Storage Configuration
+REACT_APP_PROVIDER_DOCS_BUCKET=provider-docs
+
+# Backend Configuration
+REACT_APP_BACKEND_URL=http://localhost:8000
+
+# Face Recognition
+REACT_APP_FACE_RECOGNITION_ENABLED=true
+
+# Instructions:
+# 1. Replace your_supabase_project_url and your_supabase_anon_key with actual values
+# 2. Copy this to both .env files:
+#    - service-app-main/frontend/.env
+#    - provider-main/provider-main/frontend/.env

@@ -125,7 +125,7 @@ const ProviderDashboard = () => {
       await supabase.auth.signOut();
     } catch (_) {}
     try { toast.message('Logged out'); } catch (_) {}
-    navigate('/login');
+    navigate('/register/step/1');
   };
 
   const fetchProfileData = async (profileId) => {

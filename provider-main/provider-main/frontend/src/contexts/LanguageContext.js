@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext } from 'react';
 import { translations } from '../utils/translations';
 
 const LanguageContext = createContext();
@@ -10,13 +10,11 @@ export const useLanguage = () => {
 };
 
 export const LanguageProvider = ({ children }) => {
-  const [language, setLanguage] = useState(() => localStorage.getItem('prov_language') || 'en');
+  // Multi-language switching removed: lock the app to English.
+  const language = 'en';
+  const setLanguage = () => {};
 
-  useEffect(() => {
-    localStorage.setItem('prov_language', language);
-  }, [language]);
-
-  const t = (key) => translations[language]?.[key] || key;
+  const t = (key) => translations.en?.[key] || key;
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar as CalendarIcon, Clock, MapPin, MessageSquare, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, PROVIDER_DOCS_BUCKET } from '../lib/supabaseClient';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -47,7 +47,7 @@ const BookNow = () => {
             imageUrl = `data:image/jpeg;base64,${facePath}`;
           } else {
             try {
-              const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
+              const { data: signed, error: sErr } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(facePath, 3600);
               if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
             } catch (_) {}
           }

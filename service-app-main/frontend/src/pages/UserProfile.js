@@ -545,13 +545,6 @@ const UserProfile = () => {
                   <div>
                     <p className="text-sm text-slate-600 dark:text-slate-400">{t('phoneLabel') || 'Phone'}</p>
                     <p className="font-semibold">{user.phone || 'Not provided'}</p>
-                    {!user.phone && (
-                      <div className="mt-2">
-                        <Button size="sm" onClick={() => navigate('/verify-otp')}>
-                          {t('verifyNumber') || 'Verify Number'}
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 </div>
 

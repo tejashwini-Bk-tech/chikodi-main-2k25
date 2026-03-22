@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, Filter, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, PROVIDER_DOCS_BUCKET } from '../lib/supabaseClient';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
@@ -40,7 +40,7 @@ const ProviderList = () => {
           const facePath = p?.documents?.face_photo;
           if (facePath && typeof facePath === 'string') {
             try {
-              const { data: signed, error: sErr } = await supabase.storage.from('provider-docs').createSignedUrl(facePath, 3600);
+              const { data: signed, error: sErr } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(facePath, 3600);
               if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
             } catch (_) {}
           }

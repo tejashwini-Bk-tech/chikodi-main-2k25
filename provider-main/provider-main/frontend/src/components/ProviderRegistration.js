@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Webcam from 'react-webcam';
-import FaceRecognition from './FaceRecognition';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
@@ -10,10 +9,10 @@ import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { Camera, Upload, FileText, User, Shield, Award, Briefcase } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, PROVIDER_DOCS_BUCKET } from '../lib/supabaseClient';
 
- const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
- const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const PROFESSIONS = [
   { id: 'electrician', name: 'Electrician' },
@@ -46,7 +45,7 @@ const ProviderRegistration = () => {
   useEffect(() => {
     if (step) {
       const n = parseInt(step, 10);
-      if (!Number.isNaN(n) && n >= 1 && n <= 5 && n !== currentStep) {
+      if (!Number.isNaN(n) && n >= 1 && n <= 4 && n !== currentStep) {
         setCurrentStep(n);
       }
     }
@@ -60,20 +59,7 @@ const ProviderRegistration = () => {
   }, [step, location.pathname]);
 
   // Auth guard: ensure a session exists on this origin
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const user = data?.session?.user || null;
-        if (!user) {
-          try { toast.error('Please login to continue'); } catch (_) {}
-          navigate('/login', { replace: true, state: { redirect: location.pathname } });
-        }
-      } catch (_) {
-        navigate('/login', { replace: true, state: { redirect: location.pathname } });
-      }
-    })();
-  }, []);
+  // Auth is now handled at the route level (see App.js RequireProviderAuth).
 
 
 
@@ -127,7 +113,7 @@ const ProviderRegistration = () => {
       if (m && m[1]) return m[1].replace(/\s+/g, ' ').trim();
     }
     // Fallback: first strong uppercase line excluding common headers
-    const blacklist = ['GOVERNMENT OF INDIA','INCOME TAX DEPARTMENT','PERMANENT ACCOUNT NUMBER','UNIQUE IDENTIFICATION AUTHORITY OF INDIA','AADHAAR','AADHAR'];
+    const blacklist = ['GOVERNMENT OF INDIA', 'INCOME TAX DEPARTMENT', 'PERMANENT ACCOUNT NUMBER', 'UNIQUE IDENTIFICATION AUTHORITY OF INDIA', 'AADHAAR', 'AADHAR'];
     for (const line of cleaned) {
       const up = line.toUpperCase();
       if (blacklist.some(k => up.includes(k))) continue;
@@ -477,7 +463,7 @@ const ProviderRegistration = () => {
 
   const nextStep = () => {
     if (validateStep()) {
-      const newStep = Math.min(currentStep + 1, 5);
+      const newStep = Math.min(currentStep + 1, 4);
       setCurrentStep(newStep);
       navigate(`/register/step/${newStep}`);
     }
@@ -496,11 +482,13 @@ const ProviderRegistration = () => {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const sessionUser = sessionData?.session?.user || null;
+
       if (!sessionUser?.id) {
-        toast.error('Please login to continue');
+        toast.error('Please sign in to continue.');
         setIsLoading(false);
         return;
       }
+
       const user_id = sessionUser.id;
       const toBlob = (b64) => {
         const byteChars = atob(b64);
@@ -513,7 +501,7 @@ const ProviderRegistration = () => {
       const upload = async (b64, filename) => {
         if (!b64) return null;
         const path = `${folder}/${filename}`;
-        const { error } = await supabase.storage.from('provider-docs').upload(path, toBlob(b64), { upsert: true, contentType: 'image/jpeg' });
+        const { error } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).upload(path, toBlob(b64), { upsert: true, contentType: 'image/jpeg' });
         if (error) throw error;
         return path;
       };
@@ -533,7 +521,7 @@ const ProviderRegistration = () => {
       documents.aadhaar_card = await upload(formData.aadhaar_card, 'aadhaar_card.jpg');
       documents.pan_card = await upload(formData.pan_card, 'pan_card.jpg');
       documents.face_photo = await upload(formData.face_photo, 'face_photo.jpg');
-      try { console.log('[ProviderRegistration] upload paths', { face_photo: documents.face_photo, aadhaar: documents.aadhaar_card, pan: documents.pan_card, work_sample: documents.work_sample }); } catch (_) {}
+      try { console.log('[ProviderRegistration] upload paths', { face_photo: documents.face_photo, aadhaar: documents.aadhaar_card, pan: documents.pan_card, work_sample: documents.work_sample }); } catch (_) { }
 
       // Newly added uploads
       documents.govt_certificate = await upload(formData.govt_certificate, 'govt_certificate.jpg');
@@ -563,7 +551,7 @@ const ProviderRegistration = () => {
           const folder = `${user_id}`;
           const filename = `work_video_${i + 1}.mp4`;
           const path = `${folder}/${filename}`;
-          const { error } = await supabase.storage.from('provider-docs').upload(path, toBlob(b64), { upsert: true, contentType: 'video/mp4' });
+          const { error } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).upload(path, toBlob(b64), { upsert: true, contentType: 'video/mp4' });
           if (!error) workVideos.push(path);
         }
       }
@@ -575,8 +563,8 @@ const ProviderRegistration = () => {
 
       const professional_status = {};
       for (const profession of formData.professions) {
-        if (['photographer','videographer','massage_therapist','hairstylist','henna_artist','makeup_artist','caterer'].includes(profession)) {
-          if (!has_trade_license || (['massage_therapist','hairstylist','henna_artist','makeup_artist','caterer'].includes(profession) && !has_health_permit)) {
+        if (['photographer', 'videographer', 'massage_therapist', 'hairstylist', 'henna_artist', 'makeup_artist', 'caterer'].includes(profession)) {
+          if (!has_trade_license || (['massage_therapist', 'hairstylist', 'henna_artist', 'makeup_artist', 'caterer'].includes(profession) && !has_health_permit)) {
             professional_status[profession] = 'Amateur/Freelancer';
           } else {
             professional_status[profession] = 'Professional';
@@ -607,11 +595,11 @@ const ProviderRegistration = () => {
         last_location_at: new Date().toISOString()
       };
 
-      try { console.log('[ProviderRegistration] inserting provider row', { professions: insertRow.professions, documents: insertRow.documents }); } catch (_) {}
+      try { console.log('[ProviderRegistration] inserting provider row', { professions: insertRow.professions, documents: insertRow.documents }); } catch (_) { }
 
       const { data: inserted, error } = await supabase.from('providers').insert(insertRow).select('*').single();
       if (error) throw error;
-      try { console.log('[ProviderRegistration] inserted row', { professions: inserted?.professions, face_photo: inserted?.documents?.face_photo, documents: inserted?.documents }); } catch (_) {}
+      try { console.log('[ProviderRegistration] inserted row', { professions: inserted?.professions, face_photo: inserted?.documents?.face_photo, documents: inserted?.documents }); } catch (_) { }
 
       toast.success('Registration successful! Redirecting to your dashboard...');
       setTimeout(() => {
@@ -625,6 +613,11 @@ const ProviderRegistration = () => {
         msg = detail.map(e => e?.msg || e).join('; ');
       } else if (typeof detail === 'string') {
         msg = detail;
+      } else if (
+        error?.name === 'StorageApiError' ||
+        (typeof error?.message === 'string' && /bucket not found/i.test(error.message))
+      ) {
+        msg = `Storage bucket "${PROVIDER_DOCS_BUCKET}" not found. Create it in Supabase Storage, or set REACT_APP_PROVIDER_DOCS_BUCKET to the correct bucket name.`;
       } else if (typeof error?.message === 'string') {
         msg = error.message;
       }
@@ -979,79 +972,6 @@ const ProviderRegistration = () => {
           </Card>
         );
 
-      case 5:
-        return (
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader className="text-center pb-8">
-              <div className="mx-auto mb-4 p-3 bg-green-100 rounded-full w-fit">
-                <Camera className="h-8 w-8 text-green-600" />
-              </div>
-              <CardTitle className="text-3xl font-bold text-gray-800">Face Recognition</CardTitle>
-              <p className="text-gray-600">Capture your face photo for identity verification</p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {!showCamera && !formData.face_photo && (
-                <div className="text-center space-y-4">
-                  <Button
-                    onClick={() => setShowCamera(true)}
-                    className="btn-primary h-14 px-8 text-lg"
-                    data-testid="open-camera-btn"
-                  >
-                    <Camera className="mr-2 h-5 w-5" />
-                    Open Camera
-                  </Button>
-                  <p className="text-sm text-gray-600">Click to open camera and capture your photo</p>
-                </div>
-              )}
-
-              {showCamera && (
-                <div className="space-y-4">
-                  <div className="relative mx-auto w-full max-w-2xl">
-                    <FaceRecognition
-                      onCaptured={(dataUrl) => {
-                        try {
-                          const base64 = (dataUrl || '').split(',')[1] || null;
-                          setFormData(prev => ({ ...prev, face_photo: base64 }));
-                          setShowCamera(false);
-                          toast.success('Face photo captured successfully');
-                        } catch (_) {
-                          toast.error('Failed to capture face photo');
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-center">
-                    <Button onClick={() => setShowCamera(false)} variant="outline" className="h-12 px-6">Close</Button>
-                  </div>
-                </div>
-              )}
-
-              {formData.face_photo && (
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-48 h-48 bg-gray-100 rounded-lg overflow-hidden">
-                    <img
-                      src={`data:image/jpeg;base64,${formData.face_photo}`}
-                      alt="Face photo"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <p className="text-green-600 font-medium">Face photo captured</p>
-                  <Button
-                    onClick={() => {
-                      setShowCamera(true);
-                      setFormData(prev => ({ ...prev, face_photo: null }));
-                    }}
-                    variant="outline"
-                    className="h-12 px-6"
-                    data-testid="retake-photo-btn"
-                  >
-                    Retake Photo
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
 
       default:
         return null;
@@ -1072,7 +992,7 @@ const ProviderRegistration = () => {
           {/* Progress bar */}
           <div className="flex justify-center mb-8">
             <div className="flex items-center space-x-4">
-              {[1, 2, 3, 4, 5].map((step) => (
+              {[1, 2, 3, 4].map((step) => (
                 <div key={step} className="flex items-center">
                   <div className={`
                     w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
@@ -1083,7 +1003,7 @@ const ProviderRegistration = () => {
                   `}>
                     {step}
                   </div>
-                  {step < 5 && (
+                  {step < 4 && (
                     <div className={`w-16 h-1 mx-2 ${currentStep > step ? 'bg-emerald-600' : 'bg-gray-200'
                       }`} />
                   )}
@@ -1107,7 +1027,7 @@ const ProviderRegistration = () => {
             Previous
           </Button>
 
-          {currentStep < 5 ? (
+          {currentStep < 4 ? (
             <Button
               onClick={nextStep}
               className="btn-primary h-12 px-6"
