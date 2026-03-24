@@ -86,7 +86,7 @@ class ServiceProviderAPITester:
                 "face_photo": sample_image
             }
             
-            response = requests.post(f"{self.api_url}/register", json=registration_data)
+            response = requests.post(f"{self.api_url}/register/json", json=registration_data)
             success = response.status_code == 200
             
             if success:
@@ -121,7 +121,7 @@ class ServiceProviderAPITester:
                 "face_photo": sample_image
             }
             
-            response = requests.post(f"{self.api_url}/register", json=registration_data)
+            response = requests.post(f"{self.api_url}/register/json", json=registration_data)
             # Should fail with 400
             success = response.status_code == 400
             details = f"Status: {response.status_code}, Expected 400 for missing mandatory license"
@@ -150,7 +150,7 @@ class ServiceProviderAPITester:
                 "face_photo": sample_image
             }
             
-            response = requests.post(f"{self.api_url}/register", json=registration_data)
+            response = requests.post(f"{self.api_url}/register/json", json=registration_data)
             success = response.status_code == 200
             
             if success:
@@ -259,7 +259,7 @@ class ServiceProviderAPITester:
                 "face_photo": sample_image
             }
             
-            response = requests.post(f"{self.api_url}/register", json=registration_data)
+            response = requests.post(f"{self.api_url}/register/json", json=registration_data)
             # Should fail with 400
             success = response.status_code == 400
             details = f"Status: {response.status_code}, Expected 400 for duplicate mobile"

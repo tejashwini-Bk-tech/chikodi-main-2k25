@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, BarChart3, Users, User, Bell } from 'lucide-react';
+import { MapPin, BarChart3, Users, User, Bell, Briefcase } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -23,6 +23,8 @@ const Dashboard = () => {
   const [markersRef] = [useRef({})];
   const [completedCount, setCompletedCount] = useState(0);
   const [userId, setUserId] = useState(null);
+  const [userEmail, setUserEmail] = useState(null);
+  const [userBookings, setUserBookings] = useState([]);
 
   useEffect(() => {
     const fetchProvider = async () => {
@@ -31,11 +33,15 @@ const Dashboard = () => {
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user || null;
         setUserId(user?.id || null);
+        setUserEmail(user?.email || null);
+
         if (!user?.id) {
           setProvider(null);
           setProviderStatus('unauth');
           return;
         }
+
+        // Fetch provider profile
         const { data, error } = await supabase
           .from('providers')
           .select('*')
@@ -43,6 +49,16 @@ const Dashboard = () => {
           .maybeSingle();
         if (error) throw error;
         setProvider(data || null);
+
+        // Fetch user's bookings to extract services they've booked
+        const { data: bookings, error: bookingError } = await supabase
+          .from('bookings')
+          .select('service_type')
+          .eq('user_id', user.id);
+        if (!bookingError && bookings) {
+          setUserBookings(bookings);
+        }
+
         setProviderStatus('success');
       } catch (e) {
         console.error('Failed to load provider:', e);
@@ -66,7 +82,7 @@ const Dashboard = () => {
           .eq('user_id', userId)
           .eq('status', 'completed');
         if (!error && !cancelled) setCompletedCount((data || []).length);
-      } catch (_) {}
+      } catch (_) { }
     };
     refresh();
     try {
@@ -76,8 +92,8 @@ const Dashboard = () => {
           await refresh();
         })
         .subscribe();
-    } catch (_) {}
-    return () => { try { channel && supabase.removeChannel(channel); } catch (_) {} cancelled = true; };
+    } catch (_) { }
+    return () => { try { channel && supabase.removeChannel(channel); } catch (_) { } cancelled = true; };
   }, [userId]);
 
   // Load saved user location (set on the Geolocation page)
@@ -144,7 +160,7 @@ const Dashboard = () => {
     };
     load();
     return () => {
-      try { channel && supabase.removeChannel(channel); } catch (_) {}
+      try { channel && supabase.removeChannel(channel); } catch (_) { }
     };
   }, []);
 
@@ -160,7 +176,7 @@ const Dashboard = () => {
         setMetricsStatus('success');
       } catch (e) {
         setMetrics({
-          labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+          labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
           users: [12, 19, 7, 14, 20, 25, 22],
           providers: [5, 9, 11, 8, 12, 15, 17]
         });
@@ -211,7 +227,7 @@ const Dashboard = () => {
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
       script.onload = () => setLeafletReady(true);
-      script.onerror = () => {};
+      script.onerror = () => { };
       document.body.appendChild(script);
     } else {
       setLeafletReady(true);
@@ -242,7 +258,7 @@ const Dashboard = () => {
       const ok = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
       if (!ok) continue;
       const latlng = [p.location.lat, p.location.lng];
-      const label = (p.professions?.[0] || 'Provider').replace('_',' ');
+      const label = (p.professions?.[0] || 'Provider').replace('_', ' ');
       const popup = `${label}<br/>${p._distance_km?.toFixed(1)} km away`;
       if (markers[id]) {
         markers[id].setLatLng(latlng).setPopupContent(popup);
@@ -302,6 +318,87 @@ const Dashboard = () => {
             </div>
           </div>
           <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide">{t('slogan')}</p>
+        </div>
+
+        {/* User Profile Cards Section */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* User Name Card */}
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <User className="w-5 h-5 text-purple-600" />
+                <CardTitle className="text-base font-semibold">{t('userName') || 'User Name'}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-lg font-bold text-gray-800 truncate">
+                {userEmail ? userEmail.split('@')[0].toUpperCase() : 'Guest User'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1 truncate">{userEmail || 'No email'}</p>
+            </CardContent>
+          </Card>
+
+          {/* Location Card */}
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-red-600" />
+                <CardTitle className="text-base font-semibold">{t('currentLocation') || 'Location'}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {userLocation ? (
+                <>
+                  <p className="text-lg font-bold text-gray-800">
+                    {userLocation.address || `${userLocation.lat?.toFixed(4)}, ${userLocation.lng?.toFixed(4)}`}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {userLocation.address ? `${userLocation.lat?.toFixed(4)}, ${userLocation.lng?.toFixed(4)}` : 'Coordinates set'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-bold text-gray-600">Not Set</p>
+                  <p className="text-xs text-gray-500 mt-1">Set your location to find providers</p>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/geolocation')}>
+                    {t('setLocation') || 'Set Location'}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Services Requested Card */}
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-amber-600" />
+                <CardTitle className="text-base font-semibold">{t('servicesBooked') || 'Services'}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {userBookings.length > 0 ? (
+                <>
+                  <p className="text-lg font-bold text-gray-800">{userBookings.length}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {Array.from(new Set(userBookings.map(b => b.service_type))).slice(0, 2).join(', ')}
+                    {Array.from(new Set(userBookings.map(b => b.service_type))).length > 2 ? ` +${Array.from(new Set(userBookings.map(b => b.service_type))).length - 2} more` : ''}
+                  </p>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/providers')}>
+                    {t('browseMore') || 'Browse More'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-bold text-gray-600">0 Bookings</p>
+                  <p className="text-xs text-gray-500 mt-1">Browse and book services</p>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/providers')}>
+                    {t('browse') || 'Browse'}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -402,8 +499,7 @@ const Dashboard = () => {
                   {nearbyProviders.map((p) => (
                     <div key={p.provider_id} className="py-3 flex items-center justify-between">
                       <div>
-                        <div className="font-medium">{(p.professions?.[0] || 'Provider').replace('_',' ')}</div>
-                        <div className="text-xs text-slate-500">ID: {(p.provider_id || '').toString().slice(0, 8)}</div>
+                        <div className="font-medium">{(p.professions?.[0] || 'Provider').replace('_', ' ')}</div>
                         <div className="text-xs text-slate-600 mt-1">
                           {`${p._distance_km.toFixed(1)} km away`}
                         </div>

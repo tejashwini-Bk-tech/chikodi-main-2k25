@@ -75,28 +75,11 @@ const Login = ({ redirectTo, embedded = false, title = 'Provider Login' }) => {
       const redirectTo = `${window.location.origin}/auth/callback`;
       const { data, error } = await supabase.auth.signUp({ email: e, password: p, options: { emailRedirectTo: redirectTo } });
       if (error) throw error;
-      if (data?.user && !data.session) {
-        toast.success('Account created. Please check your email to confirm.');
-      } else {
-        toast.success('Account created and logged in');
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const user = sessionData?.session?.user || null;
-          if (user) {
-            const { data: prov, error: provErr } = await supabase
-              .from('providers')
-              .select('provider_id, user_id')
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (!provErr && prov?.provider_id) {
-              navigate('/', { replace: true });
-              return;
-            }
-          }
-        } catch (_) { }
-        const fallback = redirectTo || location.state?.redirect || '/register/step/1';
-        navigate(fallback, { replace: true });
-      }
+
+      // After signup, navigate to registration step 1
+      // User will complete provider registration form
+      toast.success('Account created! Let\'s complete your provider profile.');
+      navigate('/register/step/1', { replace: true });
     } catch (err) {
       toast.error(err?.message || 'Sign up failed');
     } finally {
@@ -134,6 +117,9 @@ const Login = ({ redirectTo, embedded = false, title = 'Provider Login' }) => {
           <div className="flex gap-2">
             <Button onClick={signInWithPassword} disabled={loading} className="h-11 flex-1">
               {loading ? 'Please wait...' : 'Sign In'}
+            </Button>
+            <Button onClick={signUpWithPassword} disabled={loading} variant="outline" className="h-11 flex-1">
+              {loading ? 'Please wait...' : 'Sign Up'}
             </Button>
           </div>
           {/* <Button onClick={sendMagicLink} disabled={loading} className="w-full h-11">

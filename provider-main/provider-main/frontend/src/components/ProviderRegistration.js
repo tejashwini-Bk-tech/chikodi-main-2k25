@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import Webcam from 'react-webcam';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
@@ -31,11 +30,9 @@ const PROFESSIONS = [
 
 const ProviderRegistration = () => {
   const navigate = useNavigate();
-  const webcamRef = useRef(null);
   const [currentStep, setCurrentStep] = useState(1);
   const { step } = useParams();
   const location = useLocation();
-  const [showCamera, setShowCamera] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
 
@@ -71,7 +68,6 @@ const ProviderRegistration = () => {
     work_sample: null,
     aadhaar_card: null,
     pan_card: null,
-    face_photo: null,
     govt_certificate: null,
     work_photos: [],
     about_text: '',
@@ -384,14 +380,6 @@ const ProviderRegistration = () => {
     );
   };
 
-  const capturePhoto = () => {
-    const imageSrc = webcamRef.current.getScreenshot();
-    const base64 = imageSrc.split(',')[1];
-    setFormData(prev => ({ ...prev, face_photo: base64 }));
-    setShowCamera(false);
-    toast.success('Face photo captured successfully');
-  };
-
   const handleProfessionChange = (profession, checked) => {
     setFormData(prev => ({
       ...prev,
@@ -450,12 +438,6 @@ const ProviderRegistration = () => {
           return false;
         }
         return true;
-      case 5:
-        if (!formData.face_photo) {
-          toast.error('Please capture your face photo');
-          return false;
-        }
-        return true;
       default:
         return true;
     }
@@ -490,72 +472,18 @@ const ProviderRegistration = () => {
       }
 
       const user_id = sessionUser.id;
-      const toBlob = (b64) => {
-        const byteChars = atob(b64);
-        const byteNumbers = new Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-        const byteArray = new Uint8Array(byteNumbers);
-        return new Blob([byteArray], { type: 'image/jpeg' });
-      };
-      const folder = `${user_id}`;
-      const upload = async (b64, filename) => {
-        if (!b64) return null;
-        const path = `${folder}/${filename}`;
-        const { error } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).upload(path, toBlob(b64), { upsert: true, contentType: 'image/jpeg' });
-        if (error) throw error;
-        return path;
-      };
 
-      const documents = {};
-      documents.trade_license = await upload(formData.trade_license, 'trade_license.jpg');
-      documents.health_permit = await upload(formData.health_permit, 'health_permit.jpg');
-      const certs = [];
-      if (Array.isArray(formData.certificates)) {
-        for (let i = 0; i < formData.certificates.length; i++) {
-          const p = await upload(formData.certificates[i], `certificate_${i + 1}.jpg`);
-          if (p) certs.push(p);
-        }
-      }
-      documents.certificates = certs;
-      documents.work_sample = await upload(formData.work_sample, 'work_sample.jpg');
-      documents.aadhaar_card = await upload(formData.aadhaar_card, 'aadhaar_card.jpg');
-      documents.pan_card = await upload(formData.pan_card, 'pan_card.jpg');
-      documents.face_photo = await upload(formData.face_photo, 'face_photo.jpg');
-      try { console.log('[ProviderRegistration] upload paths', { face_photo: documents.face_photo, aadhaar: documents.aadhaar_card, pan: documents.pan_card, work_sample: documents.work_sample }); } catch (_) { }
-
-      // Newly added uploads
-      documents.govt_certificate = await upload(formData.govt_certificate, 'govt_certificate.jpg');
-      const workPhotos = [];
-      if (Array.isArray(formData.work_photos)) {
-        for (let i = 0; i < formData.work_photos.length; i++) {
-          const p = await upload(formData.work_photos[i], `work_photo_${i + 1}.jpg`);
-          if (p) workPhotos.push(p);
-        }
-      }
-      documents.work_photos = workPhotos;
-      const workVideos = [];
-      if (Array.isArray(formData.work_videos)) {
-        for (let i = 0; i < formData.work_videos.length; i++) {
-          // store videos with mp4 extension; contentType default in helper is image/jpeg, so override locally for videos
-          const b64 = formData.work_videos[i];
-          if (!b64) continue;
-          const toBlob = (base64) => {
-            const byteCharacters = atob(base64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            return new Blob([byteArray], { type: 'video/mp4' });
-          };
-          const folder = `${user_id}`;
-          const filename = `work_video_${i + 1}.mp4`;
-          const path = `${folder}/${filename}`;
-          const { error } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).upload(path, toBlob(b64), { upsert: true, contentType: 'video/mp4' });
-          if (!error) workVideos.push(path);
-        }
-      }
-      documents.work_videos = workVideos;
+      const documents = {
+        trade_license: formData.trade_license || null,
+        health_permit: formData.health_permit || null,
+        certificates: Array.isArray(formData.certificates) && formData.certificates.length ? formData.certificates : [],
+        work_sample: formData.work_sample || null,
+        aadhaar_card: formData.aadhaar_card || null,
+        pan_card: formData.pan_card || null,
+        govt_certificate: formData.govt_certificate || null,
+        work_photos: Array.isArray(formData.work_photos) ? formData.work_photos : [],
+        work_videos: Array.isArray(formData.work_videos) ? formData.work_videos : [],
+      };
 
       const has_trade_license = !!documents.trade_license;
       const has_health_permit = !!documents.health_permit;
@@ -576,13 +504,13 @@ const ProviderRegistration = () => {
 
       const verified = !!(aadhaarVerified && panVerified);
       const insertRow = {
+        provider_id: user_id,
         professions: formData.professions,
         has_trade_license,
         has_health_permit,
         has_certificates,
         professional_status,
         documents,
-        face_photo: documents.face_photo || null,
         is_verified: verified,
         verification_date: new Date().toISOString(),
         user_id: user_id || undefined,
@@ -599,7 +527,7 @@ const ProviderRegistration = () => {
 
       const { data: inserted, error } = await supabase.from('providers').insert(insertRow).select('*').single();
       if (error) throw error;
-      try { console.log('[ProviderRegistration] inserted row', { professions: inserted?.professions, face_photo: inserted?.documents?.face_photo, documents: inserted?.documents }); } catch (_) { }
+      try { console.log('[ProviderRegistration] inserted row', { professions: inserted?.professions, documents: inserted?.documents }); } catch (_) { }
 
       toast.success('Registration successful! Redirecting to your dashboard...');
       setTimeout(() => {

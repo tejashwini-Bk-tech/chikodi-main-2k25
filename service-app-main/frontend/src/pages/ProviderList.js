@@ -42,7 +42,7 @@ const ProviderList = () => {
             try {
               const { data: signed, error: sErr } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(facePath, 3600);
               if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
-            } catch (_) {}
+            } catch (_) { }
           }
           return {
             id: p.provider_id,
@@ -71,7 +71,7 @@ const ProviderList = () => {
   useEffect(() => {
     // Filter providers based on search and category
     let filtered = providers;
-    
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(p =>
@@ -79,11 +79,11 @@ const ProviderList = () => {
         (p.id && p.id.toLowerCase().includes(q))
       );
     }
-    
+
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(p => (p.professions[0] || '').toLowerCase() === selectedCategory.toLowerCase());
     }
-    
+
     setFilteredProviders(filtered);
   }, [searchQuery, selectedCategory, providers]);
 
@@ -119,7 +119,7 @@ const ProviderList = () => {
               className="pl-10 py-6 text-base transition-all duration-200 focus:scale-[1.01]"
             />
           </div>
-          
+
           {/* Category Filter */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -165,13 +165,12 @@ const ProviderList = () => {
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-lg">{(provider.professions[0] || 'Provider').replace('_',' ')}</h3>
+                      <h3 className="font-bold text-lg">{(provider.professions[0] || 'Provider').replace('_', ' ')}</h3>
                       {provider.is_verified && (
                         <CheckCircle2 className="w-5 h-5 text-blue-600" />
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-slate-600 dark:text-slate-400">ID: {(provider.id || '').toString().slice(0, 8)}</p>
                       <Badge className={provider.is_available ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'}>
                         {provider.is_available ? 'Available' : 'Busy'}
                       </Badge>
@@ -181,14 +180,14 @@ const ProviderList = () => {
 
                 {/* Provider Details */}
                 <div className="space-y-2 mb-4">
-                  
+
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <MapPin className="w-4 h-4" />
                     {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number'
                       ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}`
                       : 'Location N/A'}
                   </div>
-                  
+
                   {/* Additional details can be added here (e.g., pricing) once available */}
                 </div>
 

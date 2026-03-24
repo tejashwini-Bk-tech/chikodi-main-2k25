@@ -35,6 +35,11 @@ const RequireProviderAuth = ({ children }) => {
 
   if (status === 'loading') return null;
   if (status === 'anon') {
+    // If trying to access registration (signup flow), redirect to login but allow signup
+    // For other routes, redirect to login
+    if (location.pathname.includes('/register')) {
+      return <Login />;
+    }
     const redirectTo = `${location.pathname}${location.search || ''}`;
     return <Login redirectTo={redirectTo} />;
   }
@@ -47,7 +52,7 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
         <BrowserRouter>
           <Routes>
-            
+
             <Route path="/" element={<Home />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />

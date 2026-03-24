@@ -65,6 +65,7 @@ class ProviderRegistration(BaseModel):
     # Basic Info
     email: Optional[EmailStr] = None
     mobile_number: str
+    user_id: Optional[str] = None
     
     # Professions - can select multiple
     professions: List[str]
@@ -80,7 +81,7 @@ class ProviderRegistration(BaseModel):
     pan_card: str
     
     # Face recognition
-    face_photo: str
+    face_photo: Optional[str] = None
 
 class Provider(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -390,6 +391,7 @@ async def get_professions():
 async def register_provider(
     email: Optional[EmailStr] = Form(None),
     mobile_number: str = Form(...),
+    user_id: Optional[str] = Form(None),
     professions: List[str] = Form(...),
     trade_license: Optional[UploadFile] = File(None),
     health_permit: Optional[UploadFile] = File(None),
@@ -397,7 +399,7 @@ async def register_provider(
     work_sample: UploadFile = File(...),
     aadhaar_card: UploadFile = File(...),
     pan_card: UploadFile = File(...),
-    face_photo: UploadFile = File(...),
+    face_photo: Optional[UploadFile] = File(None),
 ):
     """Register a new service provider (multipart/form-data).
     - Accepts files via UploadFile for documents and images.
@@ -419,13 +421,23 @@ async def register_provider(
     if (getattr(existing_provider, 'data', None) or {}).get('provider_id'):
         raise HTTPException(status_code=400, detail="Provider with this mobile number already exists")
 
-    # --- Generate unique provider ID ---
-    provider_id = generate_provider_id()
-    while True:
-        check = supabase.table("providers").select("provider_id").eq("provider_id", provider_id).limit(1).maybe_single().execute()
-        if not (getattr(check, 'data', None) or {}).get('provider_id'):
-            break
-        provider_id = generate_provider_id()
+    # --- Determine provider_id (user_id may be supplied by client) ---
+    provider_id = user_id or generate_provider_id()
+    if not user_id:
+        while True:
+            check = supabase.table("providers").select("provider_id").eq("provider_id", provider_id).limit(1).maybe_single().execute()
+            if not (getattr(check, 'data', None) or {}).get('provider_id'):
+                break
+            provider_id = generate_provider_id()
+
+    # --- Ensure profile can satisfy provider fk (if profile table present) ---
+    try:
+        profile_data = {"id": provider_id, "role": "provider"}
+        if email:
+            profile_data["full_name"] = email
+        supabase.table("profiles").upsert(profile_data).execute()
+    except Exception:
+        pass
 
     # --- Save uploaded files ---
     def save_file(file: UploadFile) -> str:
@@ -442,7 +454,8 @@ async def register_provider(
     documents["work_sample"] = save_file(work_sample)
     documents["aadhaar_card"] = save_file(aadhaar_card)
     documents["pan_card"] = save_file(pan_card)
-    documents["face_photo"] = save_file(face_photo)
+    if face_photo:
+        documents["face_photo"] = save_file(face_photo)
     if certificates:
         documents["certificates"] = [save_file(cert) for cert in certificates]
 
@@ -522,6 +535,85 @@ async def update_wallet(provider_id: str, amount: float):
     
     return {"message": "Wallet updated successfully"}
 
+@api_router.post("/register/json", response_model=Provider)
+async def register_provider_json(payload: ProviderRegistration):
+    """Register provider using JSON payload (e.g., test clients)"""
+
+    # --- Validate professions ---
+    for profession in payload.professions:
+        if profession not in PROFESSIONS:
+            raise HTTPException(status_code=400, detail=f"Invalid profession: {profession}")
+
+    # --- Mandatory checks ---
+    if "locksmith" in payload.professions and not payload.trade_license:
+        raise HTTPException(status_code=400, detail="Trade License is mandatory for Locksmiths")
+
+    # --- Check mobile number uniqueness ---
+    existing_provider = supabase.table("providers").select("provider_id").eq("mobile_number", payload.mobile_number).limit(1).maybe_single().execute()
+    if (getattr(existing_provider, 'data', None) or {}).get('provider_id'):
+        raise HTTPException(status_code=400, detail="Provider with this mobile number already exists")
+
+    # --- Determine provider_id (user_id may be supplied in payload) ---
+    provider_id = payload.user_id or generate_provider_id()
+    if not payload.user_id:
+        while True:
+            check = supabase.table("providers").select("provider_id").eq("provider_id", provider_id).limit(1).maybe_single().execute()
+            if not (getattr(check, 'data', None) or {}).get('provider_id'):
+                break
+            provider_id = generate_provider_id()
+
+    # --- Ensure FK target profile exists (if profile table exists) ---
+    try:
+        profile_data = {"id": provider_id, "role": "provider"}
+        if payload.email:
+            profile_data["full_name"] = payload.email
+        supabase.table("profiles").upsert(profile_data).execute()
+    except Exception:
+        pass
+
+    # --- Build document references (JSON route stores raw base64 or provided string) ---
+    documents: Dict[str, Any] = {}
+    if payload.trade_license:
+        documents["trade_license"] = payload.trade_license
+    if payload.health_permit:
+        documents["health_permit"] = payload.health_permit
+    if payload.certificates:
+        documents["certificates"] = payload.certificates
+    documents["work_sample"] = payload.work_sample
+    documents["aadhaar_card"] = payload.aadhaar_card
+    documents["pan_card"] = payload.pan_card
+    documents["face_photo"] = payload.face_photo
+
+    # --- Determine professional status ---
+    professional_status: Dict[str, str] = {}
+    has_trade_license = bool(payload.trade_license)
+    has_health_permit = bool(payload.health_permit)
+
+    for profession in payload.professions:
+        professional_status[profession] = determine_professional_status(profession, has_trade_license, has_health_permit)
+
+    # --- Generate QR code and ID card ---
+    qr_code = generate_qr_code(provider_id, payload.mobile_number)
+    id_card = generate_id_card(provider_id, payload.mobile_number, payload.professions, qr_code)
+
+    provider = Provider(
+        provider_id=provider_id,
+        email=payload.email,
+        mobile_number=payload.mobile_number,
+        professions=payload.professions,
+        has_trade_license=has_trade_license,
+        has_health_permit=has_health_permit,
+        has_certificates=bool(payload.certificates),
+        professional_status=professional_status,
+        documents=documents,
+        is_verified=True,
+        verification_date=datetime.now(timezone.utc),
+        qr_code=qr_code,
+        id_card_path=id_card,
+    )
+
+    supabase.table("providers").insert(provider.dict()).execute()
+    return provider
 @api_router.get("/providers", response_model=List[Provider])
 async def list_providers():
     """List all providers (for admin)"""

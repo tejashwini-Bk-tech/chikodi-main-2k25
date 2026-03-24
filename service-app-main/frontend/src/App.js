@@ -9,7 +9,7 @@ import Chatbot from './components/Chatbot';
 import MainHome from './pages/MainHome';
 import Home from './pages/Home';
 import Signup from './pages/Signup';
-// import Login from './pages/Login';
+import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import Geolocation from './pages/Geolocation';
 import ProviderList from './pages/ProviderList';
@@ -45,7 +45,7 @@ function App() {
               <Route path="/home" element={<Home />} />
               <Route path="/role-selection" element={<RoleSelection />} />
               <Route path="/signup" element={<Signup />} />
-              {/* <Route path="/login" element={<Login />} /> */}
+              <Route path="/login" element={<Login />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />

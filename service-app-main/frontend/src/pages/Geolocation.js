@@ -16,7 +16,7 @@ const Geolocation = () => {
   const mapRef = useRef(null);
   const markersRef = useRef({});
 
-  const handleAllowLocation = () => {};
+  const handleAllowLocation = () => { };
 
   // Load providers with location and subscribe for realtime updates
   useEffect(() => {
@@ -63,10 +63,10 @@ const Geolocation = () => {
             });
           })
           .subscribe();
-      } catch (_) {}
+      } catch (_) { }
     };
     load();
-    return () => { try { channel && supabase.removeChannel(channel); } catch (_) {} };
+    return () => { try { channel && supabase.removeChannel(channel); } catch (_) { } };
   }, []);
 
   // Dynamically load Leaflet CSS/JS once
@@ -122,8 +122,8 @@ const Geolocation = () => {
       const hasCoords = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
       if (!hasCoords) continue;
       const latlng = [p.location.lat, p.location.lng];
-      const label = (p.professions?.[0] || 'Provider').replace('_',' ');
-      const popup = `${label}<br/>ID: ${id}<br/>Updated: ${p.last_location_at ? new Date(p.last_location_at).toLocaleTimeString() : ''}`;
+      const label = (p.professions?.[0] || 'Provider').replace('_', ' ');
+      const popup = `${label}<br/>Updated: ${p.last_location_at ? new Date(p.last_location_at).toLocaleTimeString() : ''}`;
       if (markers[id]) {
         markers[id].setLatLng(latlng).setPopupContent(popup);
       } else {

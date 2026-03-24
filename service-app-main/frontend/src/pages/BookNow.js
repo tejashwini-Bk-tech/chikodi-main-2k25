@@ -49,7 +49,7 @@ const BookNow = () => {
             try {
               const { data: signed, error: sErr } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(facePath, 3600);
               if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
-            } catch (_) {}
+            } catch (_) { }
           }
         }
         setProvider({ ...data, imageUrl });
@@ -93,10 +93,10 @@ const BookNow = () => {
         return;
       }
       try {
-        const scheduled_date = date ? new Date(date).toISOString().slice(0,10) : null;
+        const scheduled_date = date ? new Date(date).toISOString().slice(0, 10) : null;
         const scheduled_time = time || null;
         let user_id = null;
-        try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch {}
+        try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch { }
         const payload = {
           provider_id: id,
           user_id,
@@ -115,7 +115,7 @@ const BookNow = () => {
         try {
           const bookingId = Array.isArray(data) ? data[0]?.id : data?.id;
           console.log('[BookNow] booking inserted', { status: 'requested', bookingId, payload });
-        } catch (_) {}
+        } catch (_) { }
       } catch (e) {
         toast.error('Failed to send request', { description: e?.message || 'Please try again.' });
         return;
@@ -126,7 +126,7 @@ const BookNow = () => {
     }
     try {
       let user_id = null;
-      try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch {}
+      try { const { data: s } = await supabase.auth.getSession(); user_id = s?.session?.user?.id || null; } catch { }
       const payload = {
         provider_id: id,
         user_id,
@@ -134,7 +134,7 @@ const BookNow = () => {
         address,
         notes,
         user_location: live || null,
-        scheduled_date: date ? new Date(date).toISOString().slice(0,10) : null,
+        scheduled_date: date ? new Date(date).toISOString().slice(0, 10) : null,
         scheduled_time: time || null,
       };
       const { data, error } = await supabase.from('bookings').insert(payload).select('id');
@@ -145,7 +145,7 @@ const BookNow = () => {
       try {
         const bookingId = Array.isArray(data) ? data[0]?.id : data?.id;
         console.log('[BookNow] booking inserted', { status: 'booked', bookingId, payload });
-      } catch (_) {}
+      } catch (_) { }
     } catch (e) {
       toast.error('Failed to book', { description: e?.message || 'Please try again.' });
       return;
@@ -154,7 +154,7 @@ const BookNow = () => {
     setBookingStatus('booked');
   };
 
-  
+
 
   if (status === 'loading') return (
     <div className="min-h-screen pt-20 pb-12 px-4"><div className="max-w-4xl mx-auto text-slate-600">Loading…</div></div>
@@ -174,7 +174,7 @@ const BookNow = () => {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent mb-2">
             Book Service
           </h1>
-          <p className="text-slate-600 dark:text-slate-400">Schedule your appointment with {(provider.professions?.[0] || 'Provider').replace('_',' ')} (ID: {provider.provider_id})</p>
+          <p className="text-slate-600 dark:text-slate-400">Schedule your appointment with {(provider.professions?.[0] || 'Provider').replace('_', ' ')}</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -237,11 +237,10 @@ const BookNow = () => {
                         type="button"
                         variant={time === slot ? 'default' : 'outline'}
                         onClick={() => setTime(slot)}
-                        className={`transition-all duration-200 ${
-                          time === slot
+                        className={`transition-all duration-200 ${time === slot
                             ? 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white'
                             : ''
-                        }`}
+                          }`}
                       >
                         {slot}
                       </Button>
@@ -308,14 +307,14 @@ const BookNow = () => {
                   </Avatar>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-lg">{(provider.professions?.[0] || 'Provider').replace('_',' ')}</h3>
+                      <h3 className="font-bold text-lg">{(provider.professions?.[0] || 'Provider').replace('_', ' ')}</h3>
                       {(provider?.is_available ?? provider?.availability_status) ? (
                         <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Available</span>
                       ) : (
                         <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Busy</span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">ID: {provider.provider_id}</p>
+
                   </div>
                 </div>
                 <div className="space-y-3 mb-4">

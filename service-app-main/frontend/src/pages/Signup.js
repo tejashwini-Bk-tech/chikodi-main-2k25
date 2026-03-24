@@ -28,6 +28,7 @@ const Signup = () => {
   const [showPwSuggestion, setShowPwSuggestion] = useState(false);
   const [suggestedPw, setSuggestedPw] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const location = useLocation();
 
@@ -86,6 +87,8 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     toast('Creating account...');
     const full_name = (formData.fullName || '').trim();
     const email = (formData.email || '').trim();
@@ -150,9 +153,18 @@ const Signup = () => {
         navigate('/login');
       }, 1500);
     } catch (err) {
-      toast.error('Signup error', {
-        description: String(err),
-      });
+      const message = (err?.message || '').toLowerCase();
+      if (message.includes('over_email_send_rate_limit')) {
+        toast.error('Signup blocked', {
+          description: 'Email rate limit exceeded. Please wait a few minutes and try again.',
+        });
+      } else {
+        toast.error('Signup error', {
+          description: err?.message || 'Something went wrong. Please try again.',
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -205,8 +217,8 @@ const Signup = () => {
               {/* Full Name Field */}
               <div
                 className={`transition-all duration-500 transform ${fieldVisible.fullName
-                    ? 'translate-x-0 opacity-100'
-                    : '-translate-x-8 opacity-0'
+                  ? 'translate-x-0 opacity-100'
+                  : '-translate-x-8 opacity-0'
                   }`}
               >
                 <Label htmlFor="fullName" className="text-sm font-medium">
@@ -226,8 +238,8 @@ const Signup = () => {
               {/* Email Field */}
               <div
                 className={`transition-all duration-500 transform ${fieldVisible.emailOrPhone
-                    ? 'translate-x-0 opacity-100'
-                    : '-translate-x-8 opacity-0'
+                  ? 'translate-x-0 opacity-100'
+                  : '-translate-x-8 opacity-0'
                   }`}
               >
                 <Label htmlFor="email" className="text-sm font-medium">Email</Label>
@@ -247,8 +259,8 @@ const Signup = () => {
               {/* Password Field */}
               <div
                 className={`transition-all duration-500 transform ${fieldVisible.password
-                    ? 'translate-x-0 opacity-100'
-                    : '-translate-x-8 opacity-0'
+                  ? 'translate-x-0 opacity-100'
+                  : '-translate-x-8 opacity-0'
                   }`}
               >
                 <Label htmlFor="password" className="text-sm font-medium">
@@ -291,10 +303,11 @@ const Signup = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
+                disabled={!allFieldsFilled || isSubmitting}
                 className={`w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 ${allFieldsFilled ? 'animate-pulse [animation-duration:2.5s]' : ''
-                  } hover:scale-[1.02]`}
+                  } hover:scale-[1.02] ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
-                {t('signupButton')}
+                {isSubmitting ? 'Creating account…' : t('signupButton')}
               </Button>
             </form>
 
