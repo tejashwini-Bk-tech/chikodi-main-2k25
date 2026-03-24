@@ -31,6 +31,35 @@ const ProviderProfile = () => {
           .maybeSingle();
         if (error) throw error;
         if (!data) { navigate('/providers'); return; }
+
+        // Fetch provider's full name from profiles table
+        let fullName = 'Provider';
+        if (data.user_id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', data.user_id)
+            .maybeSingle();
+          if (profile?.full_name) fullName = profile.full_name;
+        }
+
+        // Get location address via reverse geocoding
+        let locationAddress = 'Location N/A';
+        if (typeof data?.location?.lat === 'number' && typeof data?.location?.lng === 'number') {
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.location.lat}&lon=${data.location.lng}`
+            );
+            const geoData = await res.json();
+            if (geoData?.address) {
+              const addr = geoData.address;
+              locationAddress = addr.city || addr.town || addr.village || addr.county || 'Unknown Location';
+            }
+          } catch (_) {
+            locationAddress = `${data.location.lat.toFixed(3)}, ${data.location.lng.toFixed(3)}`;
+          }
+        }
+
         // Build face image signed URL if present
         let imageUrl = '';
         const facePath = data?.documents?.face_photo;
@@ -38,9 +67,9 @@ const ProviderProfile = () => {
           try {
             const { data: signed, error: sErr } = await supabase.storage.from(PROVIDER_DOCS_BUCKET).createSignedUrl(facePath, 3600);
             if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
-          } catch (_) {}
+          } catch (_) { }
         }
-        setProvider({ ...data, imageUrl });
+        setProvider({ ...data, imageUrl, fullName, locationAddress });
         setStatus('success');
       } catch (e) {
         console.error('Failed to load provider', e);
@@ -66,7 +95,7 @@ const ProviderProfile = () => {
         const r = data || [];
         const avg = r.length ? (r.reduce((s, x) => s + (Number(x.rating) || 0), 0) / r.length) : 0;
         setAvgRating(avg);
-      } catch (_) {}
+      } catch (_) { }
     };
     loadReviews();
     let ch = null;
@@ -77,8 +106,8 @@ const ProviderProfile = () => {
           .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `provider_id=eq.${id}` }, loadReviews)
           .subscribe();
       }
-    } catch (_) {}
-    return () => { cancelled = true; if (ch) try { supabase.removeChannel(ch); } catch (_) {} };
+    } catch (_) { }
+    return () => { cancelled = true; if (ch) try { supabase.removeChannel(ch); } catch (_) { } };
   }, [id]);
 
   if (status === 'loading') return (
@@ -104,27 +133,43 @@ const ProviderProfile = () => {
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
               <Avatar className="w-32 h-32 ring-4 ring-blue-600">
-                <AvatarImage src={provider.imageUrl} alt={provider.provider_id} />
-                <AvatarFallback className="text-4xl">{(provider.professions?.[0] || 'P')[0]}</AvatarFallback>
+                <AvatarImage src={provider.imageUrl} alt={provider.fullName} />
+                <AvatarFallback className="text-4xl">{(provider.fullName || 'P')[0]}</AvatarFallback>
               </Avatar>
-              
+
               <div className="flex-1">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h1 className="text-3xl font-bold">{(provider.professions?.[0] || 'Provider').replace('_',' ')}</h1>
+                      <h1 className="text-3xl font-bold">{provider.fullName}</h1>
                       {provider.is_verified && (
                         <CheckCircle2 className="w-6 h-6 text-blue-600" />
                       )}
                     </div>
-                    <p className="text-lg text-slate-600 dark:text-slate-400 mb-2">ID: {provider.provider_id}</p>
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                        <MapPin className="w-4 h-4" />
-                        {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'Location N/A'}
+
+                    {/* Services Offered */}
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-2">Services Offered:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.isArray(provider.professions) && provider.professions.length > 0 ? (
+                          provider.professions.map((prof, idx) => (
+                            <Badge key={idx} variant="outline" className="text-sm">
+                              {prof.replace('_', ' ')}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-slate-500">No services listed</span>
+                        )}
                       </div>
                     </div>
+
+                    {/* Location */}
+                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                      <MapPin className="w-4 h-4" />
+                      <span>{provider.locationAddress}</span>
+                    </div>
                   </div>
+
                   <div className="text-right">
                     <p className="text-sm text-slate-600 dark:text-slate-400">Joined {new Date(provider.created_at).toLocaleDateString()}</p>
                   </div>
@@ -183,7 +228,7 @@ const ProviderProfile = () => {
                         </Avatar>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
-                            <p className="font-semibold">User {review.user_id?.slice(0,6) || 'N/A'}</p>
+                            <p className="font-semibold">User {review.user_id?.slice(0, 6) || 'N/A'}</p>
                             <span className="text-sm text-slate-600 dark:text-slate-400">{review.created_at ? new Date(review.created_at).toLocaleDateString() : ''}</span>
                           </div>
                           <div className="flex items-center gap-1 mb-2">

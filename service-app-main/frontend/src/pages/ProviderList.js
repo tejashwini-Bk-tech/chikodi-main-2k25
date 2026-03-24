@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { toast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 
 const ProviderList = () => {
   const { t } = useLanguage();
@@ -30,13 +30,31 @@ const ProviderList = () => {
       try {
         const { data, error } = await supabase
           .from('providers')
-          .select('provider_id, professions, is_verified, is_available, location, documents, created_at')
-          .order('created_at', { ascending: false });
+          .select('provider_id, user_id, professions, is_verified, is_available, location, documents, created_at');
         if (error) throw error;
         const items = data || [];
+
+        // Get user IDs for fetching names
+        const userIds = items.map(p => p.user_id).filter(Boolean);
+
+        // Fetch names from profiles table
+        let profileMap = {};
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', userIds);
+
+          if (profiles) {
+            profileMap = Object.fromEntries(profiles.map(p => [p.id, p.full_name]));
+          }
+        }
+
         // Build display objects and signed URLs for face photos if present
         const withImages = await Promise.all(items.map(async (p) => {
           let imageUrl = '';
+          let fullName = profileMap[p.user_id] || 'Provider';
+
           const facePath = p?.documents?.face_photo;
           if (facePath && typeof facePath === 'string') {
             try {
@@ -44,12 +62,32 @@ const ProviderList = () => {
               if (!sErr && signed?.signedUrl) imageUrl = signed.signedUrl;
             } catch (_) { }
           }
+
+          // Get location address via reverse geocoding
+          let locationAddress = 'Location N/A';
+          if (typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number') {
+            try {
+              const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.location.lat}&lon=${p.location.lng}`
+              );
+              const geoData = await res.json();
+              if (geoData?.address) {
+                const addr = geoData.address;
+                locationAddress = addr.city || addr.town || addr.village || addr.county || 'Unknown Location';
+              }
+            } catch (_) {
+              locationAddress = `${p.location.lat.toFixed(3)}, ${p.location.lng.toFixed(3)}`;
+            }
+          }
+
           return {
             id: p.provider_id,
+            name: fullName,
             professions: Array.isArray(p.professions) ? p.professions : [],
             is_verified: !!p.is_verified,
             is_available: !!p.is_available,
             location: p.location || null,
+            locationAddress: locationAddress,
             image: imageUrl,
             created_at: p.created_at
           };
@@ -60,6 +98,7 @@ const ProviderList = () => {
         const cats = Array.from(new Set(withImages.flatMap(p => (p.professions[0] ? [p.professions[0]] : []))));
         setCategories(cats);
       } catch (e) {
+        console.error('Failed to load providers:', e);
         setProviders([]);
         setFilteredProviders([]);
         setCategories([]);
@@ -160,12 +199,12 @@ const ProviderList = () => {
                 {/* Provider Header */}
                 <div className="flex items-start gap-4 mb-4">
                   <Avatar className="w-16 h-16 ring-2 ring-blue-600">
-                    <AvatarImage src={provider.image} alt={provider.id} />
-                    <AvatarFallback>{(provider.professions[0] || 'P')[0]?.toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={provider.image} alt={provider.name} />
+                    <AvatarFallback>{(provider.name || 'P')[0]?.toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-lg">{(provider.professions[0] || 'Provider').replace('_', ' ')}</h3>
+                      <h3 className="font-bold text-lg">{provider.name}</h3>
                       {provider.is_verified && (
                         <CheckCircle2 className="w-5 h-5 text-blue-600" />
                       )}
@@ -178,14 +217,27 @@ const ProviderList = () => {
                   </div>
                 </div>
 
+                {/* Services/Professions */}
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Services Offered:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {provider.professions.length > 0 ? (
+                      provider.professions.map((prof, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          {prof.replace('_', ' ')}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">No services listed</span>
+                    )}
+                  </div>
+                </div>
+
                 {/* Provider Details */}
                 <div className="space-y-2 mb-4">
-
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                    <MapPin className="w-4 h-4" />
-                    {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number'
-                      ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}`
-                      : 'Location N/A'}
+                    <MapPin className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{provider.locationAddress}</span>
                   </div>
 
                   {/* Additional details can be added here (e.g., pricing) once available */}
