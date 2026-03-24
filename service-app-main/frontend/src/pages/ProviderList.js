@@ -33,20 +33,26 @@ const ProviderList = () => {
           .select('provider_id, user_id, professions, is_verified, is_available, location, documents, created_at');
         if (error) throw error;
         const items = data || [];
+        console.log('Providers fetched:', items);
 
         // Get user IDs for fetching names
         const userIds = items.map(p => p.user_id).filter(Boolean);
+        console.log('User IDs:', userIds);
 
         // Fetch names from profiles table
         let profileMap = {};
         if (userIds.length > 0) {
-          const { data: profiles } = await supabase
+          const { data: profiles, error: profileError } = await supabase
             .from('profiles')
             .select('id, full_name')
             .in('id', userIds);
 
+          console.log('Profiles query error:', profileError);
+          console.log('Profiles fetched:', profiles);
+
           if (profiles) {
             profileMap = Object.fromEntries(profiles.map(p => [p.id, p.full_name]));
+            console.log('Profile map created:', profileMap);
           }
         }
 
