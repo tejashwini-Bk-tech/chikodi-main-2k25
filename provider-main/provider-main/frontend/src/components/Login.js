@@ -52,7 +52,7 @@ const Login = ({ redirectTo, embedded = false, title = 'Provider Login' }) => {
             .eq('user_id', user.id)
             .maybeSingle();
           if (!provErr && prov?.provider_id) {
-            navigate('/', { replace: true });
+            navigate(`/dashboard/${prov.provider_id}`, { replace: true });
             return;
           }
         }

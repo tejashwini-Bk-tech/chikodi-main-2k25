@@ -4,10 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { toast } from 'sonner';
-import { Wallet, User, MapPin, Phone, Mail, Award, Shield, QrCode, CheckCircle2, AlertTriangle, Bell, Star, MessageSquare } from 'lucide-react';
+import { Wallet, User, Bell, Star, MessageSquare, CheckCircle2, AlertTriangle, Award, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 function ReviewsPanel({ providerId }) {
@@ -15,7 +14,7 @@ function ReviewsPanel({ providerId }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     if (!providerId) return;
-    let channel, channel2;
+    let channel;
     let cancelled = false;
     const load = async () => {
       try {
@@ -27,50 +26,44 @@ function ReviewsPanel({ providerId }) {
           .limit(10);
         if (!error && !cancelled) {
           setItems(data || []);
-          if (data && data.length) {
+          if (data?.length) {
             const sum = data.reduce((s, r) => s + (Number(r.rating) || 0), 0);
             setAvg((sum / data.length).toFixed(1));
           } else {
             setAvg(null);
           }
         }
-      } catch (_) {}
+      } catch { }
     };
-
     load();
-    try {
-      channel = supabase
-        .channel(`realtime-reviews-${providerId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `provider_id=eq.${providerId}` }, async () => {
-          await load();
-        })
-        .subscribe();
-    } catch (_) {}
-    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+    channel = supabase
+      .channel(`realtime-reviews-${providerId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews', filter: `provider_id=eq.${providerId}` }, load)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      try { channel && supabase.removeChannel(channel); } catch { }
+    };
   }, [providerId]);
 
   return (
-    <Card className="glass-card border-0 shadow-2xl">
+    <Card className="border-slate-200 shadow-sm rounded-2xl bg-white">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Star className="h-5 w-5 text-amber-500" />
-          <span>Reviews</span>
-          {avg && <span className="ml-2 text-sm text-gray-600">Avg {avg}/5</span>}
+        <CardTitle className="flex items-center gap-2 text-slate-900">
+          <Star className="h-5 w-5 text-amber-500" /> Reviews {avg && <span className="text-sm text-slate-500">Avg {avg}/5</span>}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {items.length === 0 ? (
-          <div className="text-sm text-gray-600">No reviews yet.</div>
-        ) : (
+        {items.length === 0 ? <p className="text-sm text-slate-500">No reviews yet.</p> : (
           <div className="space-y-3">
-            {items.map(r => (
-              <div key={r.id} className="p-3 rounded-lg bg-gray-50">
+            {items.map((r) => (
+              <div key={r.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="font-semibold">{r.user_id || 'User'}</span>
-                  <span className="text-amber-600">{('★').repeat(Number(r.rating) || 0)}</span>
-                  <span className="text-xs text-gray-500">{new Date(r.created_at).toLocaleString()}</span>
+                  <span className="font-semibold text-slate-800">{r.user_id || 'User'}</span>
+                  <span className="text-amber-500">{'*'.repeat(Number(r.rating) || 0)}</span>
+                  <span className="text-xs text-slate-500">{new Date(r.created_at).toLocaleString()}</span>
                 </div>
-                {r.comment && <div className="text-sm text-gray-700 mt-1">{r.comment}</div>}
+                {r.comment && <p className="text-sm text-slate-700 mt-1">{r.comment}</p>}
               </div>
             ))}
           </div>
@@ -84,733 +77,190 @@ const ProviderDashboard = () => {
   const { providerId } = useParams();
   const navigate = useNavigate();
   const [provider, setProvider] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isTogglingAvail, setIsTogglingAvail] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
+  const [notifItems, setNotifItems] = useState([]);
   const [completedCount, setCompletedCount] = useState(0);
   const [completedItems, setCompletedItems] = useState([]);
-  const [notifItems, setNotifItems] = useState([]);
   const [walletSum, setWalletSum] = useState(null);
-  const [msgOpen, setMsgOpen] = useState(false);
   const [msgCount, setMsgCount] = useState(0);
   const [msgItems, setMsgItems] = useState([]);
-  const [profile, setProfile] = useState(null);
   const [aadhaarVal, setAadhaarVal] = useState('');
   const [panVal, setPanVal] = useState('');
 
-  useEffect(() => {
-    fetchProviderData();
-  }, [providerId]);
+  const formatAddress = (addr) => {
+    if (!addr) return 'N/A';
+    if (typeof addr === 'string' && addr.toLowerCase().startsWith('live location:')) return 'Customer shared live location';
+    return addr;
+  };
+
+  useEffect(() => { fetchProviderData(); }, [providerId]);
 
   const fetchProviderData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('providers')
-        .select('*')
-        .eq('provider_id', providerId)
-        .maybeSingle();
+      const { data, error } = await supabase.from('providers').select('*').eq('provider_id', providerId).maybeSingle();
       if (error) throw error;
-      console.log('[ProviderDashboard] providers fetch result:', data);
       setProvider(data || null);
-    } catch (error) {
-      console.error('Failed to fetch provider data:', error);
+    } catch {
       toast.error('Failed to load provider data');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (_) {}
-    try { toast.message('Logged out'); } catch (_) {}
-    navigate('/register/step/1');
+  const fetchProfileData = async (id) => {
+    const { data } = await supabase.from('profiles').select('full_name, phone').eq('id', id).maybeSingle();
+    setProfile(data || null);
   };
+  useEffect(() => { if (provider?.provider_id) fetchProfileData(provider.provider_id); }, [provider?.provider_id]);
 
-  const fetchProfileData = async (profileId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('full_name, phone')
-        .eq('id', profileId)
-        .maybeSingle();
-      if (error) throw error;
-      console.log('[ProviderDashboard] profiles fetch result:', data);
-      setProfile(data || null);
-    } catch (e) {
-      console.error('Failed to fetch profile data:', e);
-    }
-  };
-
-  useEffect(() => {
-    if (provider?.provider_id) {
-      fetchProfileData(provider.provider_id);
-    }
-  }, [provider?.provider_id]);
-
-  // Realtime payments: compute wallet sum(amount) and toast on new payments
   useEffect(() => {
     if (!provider?.provider_id) return;
     let channel;
-    let cancelled = false;
-    const refreshSum = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('provider_id', provider.provider_id);
-        if (!error && !cancelled) {
-          const sum = (data || []).reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
-          setWalletSum(sum);
-        }
-      } catch (_) {}
+    const refresh = async () => {
+      const { data } = await supabase.from('payments').select('amount').eq('provider_id', provider.provider_id);
+      const sum = (data || []).reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
+      setWalletSum(sum);
     };
-    refreshSum();
-    try {
-      channel = supabase
-        .channel(`realtime-payments-${provider.provider_id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `provider_id=eq.${provider.provider_id}` }, async (payload) => {
-          if (payload?.eventType === 'INSERT') {
-            const amt = Number(payload?.new?.amount) || 0;
-            const method = payload?.new?.method || 'payment';
-            if (amt > 0) {
-              toast.success(`Payment received: ₹${amt.toFixed(2)}`, { description: method === 'cash' ? 'Cash payment confirmed' : 'Wallet updated' });
-            }
-          }
-          await refreshSum();
-        })
-        .subscribe();
-    } catch (_) {}
-    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} try { channel && supabase.removeChannel(channel); } catch (_) {} };
+    refresh();
+    channel = supabase.channel(`rt-payments-${provider.provider_id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `provider_id=eq.${provider.provider_id}` }, refresh).subscribe();
+    return () => { try { channel && supabase.removeChannel(channel); } catch { } };
   }, [provider?.provider_id]);
 
-  // Messages realtime for provider (recipient_id only)
-useEffect(() => {
-  if (!provider?.provider_id) return; // Exit if no provider ID
-
-  let channel;
-  let cancelled = false;
-  let firstLoad = true;
-
-  // Function to fetch latest messages
-  const loadMessages = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('id, booking_id, sender_id, recipient_id, content, created_at')
-        .eq('recipient_id', provider.provider_id) // Must be valid UUID
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) { try { toast.error('Failed to load messages'); } catch (_) {} return; }
-      if (!cancelled) {
-        setMsgItems(data || []);
-        setMsgCount((data || []).length);
-
-        if (firstLoad) { try { toast.message(`Messages loaded: ${(data || []).length}`); } catch (_) {} firstLoad = false; }
-      }
-    } catch (err) {
-      console.error('Error loading messages:', err);
-    }
-  };
-
-  loadMessages(); // Initial load
-
-  // Set up real-time subscription
-  try {
-    channel = supabase
-      .channel(`realtime-messages-${provider.provider_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `recipient_id=eq."${provider.provider_id}"`, // UUID must be in quotes
-        },
-        async (payload) => {
-          if (payload?.eventType === 'INSERT') {
-            setMsgCount((c) => c + 1);
-            toast.success('New message received');
-          }
-          await loadMessages(); // Refresh messages
-        }
-      )
-      .subscribe();
-  } catch (err) {
-    console.error('Realtime subscription error:', err);
-  }
-
-  return () => {
-    cancelled = true;
-    if (channel) supabase.removeChannel(channel); // Clean up subscription
-  };
-}, [provider?.provider_id]);
-
-
-  const markWorkDone = async (bookingId) => {
-    console.log('Marking booking as completed:', bookingId);
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .update({ status: 'completed' })
-        .eq('id', bookingId)
-        .eq('provider_id', provider.provider_id)
-        .select();
-      if (error) throw error;
-      console.log('Booking updated successfully:', data);
-      toast.success('Marked as completed');
-      // Refresh notifications and count
-      await loadLatestBookings();
-      // Trigger count refresh by reusing realtime refresh
-      setNotifCount((c) => Math.max(0, c - 1));
-    } catch (e) {
-      console.error('Failed to mark done', e);
-      toast.error('Failed to mark as completed');
-    }
-  };
-
-  // Realtime notifications for bookings
   useEffect(() => {
     if (!provider?.provider_id) return;
     let channel;
-    let cancelled = false;
-    const refreshCount = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('bookings')
-          .select('id, status')
-          .eq('provider_id', provider.provider_id)
-          .in('status', ['booked', 'requested']);
-        if (!error && !cancelled) setNotifCount((data || []).length);
-      } catch (_) {}
+    const load = async () => {
+      const { data } = await supabase.from('messages').select('id, booking_id, sender_id, content, created_at').eq('recipient_id', provider.provider_id).order('created_at', { ascending: false }).limit(20);
+      setMsgItems(data || []);
+      setMsgCount((data || []).length);
     };
-    refreshCount();
-    try {
-      channel = supabase
-        .channel(`realtime-bookings-${provider.provider_id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, async (payload) => {
-          // Safest: recompute count on any change involving this provider
-          await refreshCount();
-        })
-        .subscribe();
-    } catch (_) {}
-    return () => {
-      cancelled = true;
-      try { channel && supabase.removeChannel(channel); } catch (_) {}
-    };
+    load();
+    channel = supabase.channel(`rt-messages-${provider.provider_id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `recipient_id=eq.${provider.provider_id}` }, load).subscribe();
+    return () => { try { channel && supabase.removeChannel(channel); } catch { } };
   }, [provider?.provider_id]);
 
-  // Realtime completed jobs count
   useEffect(() => {
     if (!provider?.provider_id) return;
     let channel;
-    let cancelled = false;
-    const refreshCompleted = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('provider_id', provider.provider_id)
-          .eq('status', 'completed');
-        if (!error && !cancelled) setCompletedCount((data || []).length);
-      } catch (_) {}
+    const refresh = async () => {
+      const { data } = await supabase.from('bookings').select('id').eq('provider_id', provider.provider_id).in('status', ['booked', 'requested']);
+      setNotifCount((data || []).length);
     };
-    refreshCompleted();
-    try {
-      channel = supabase
-        .channel(`realtime-bookings-completed-${provider.provider_id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, async () => {
-          await refreshCompleted();
-        })
-        .subscribe();
-    } catch (_) {}
-    return () => { cancelled = true; try { channel && supabase.removeChannel(channel); } catch (_) {} };
+    refresh();
+    channel = supabase.channel(`rt-bookings-${provider.provider_id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, refresh).subscribe();
+    return () => { try { channel && supabase.removeChannel(channel); } catch { } };
+  }, [provider?.provider_id]);
+
+  useEffect(() => {
+    if (!provider?.provider_id) return;
+    let channel;
+    const refresh = async () => {
+      const { data } = await supabase.from('bookings').select('id').eq('provider_id', provider.provider_id).eq('status', 'completed');
+      setCompletedCount((data || []).length);
+    };
+    refresh();
+    channel = supabase.channel(`rt-bookings-completed-${provider.provider_id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `provider_id=eq.${provider.provider_id}` }, refresh).subscribe();
+    return () => { try { channel && supabase.removeChannel(channel); } catch { } };
   }, [provider?.provider_id]);
 
   const loadLatestBookings = async () => {
-    console.log('Loading latest bookings for provider:', provider?.provider_id);
-    if (!provider?.provider_id) {
-      console.log('No provider ID available');
-      return;
-    }
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('id, user_id, status, address, notes, user_location, requested_at, scheduled_date, scheduled_time')
-        .eq('provider_id', provider.provider_id)
-        .in('status', ['booked','requested'])
-        .order('requested_at', { ascending: false })
-        .limit(20);
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-      console.log('Fetched recent bookings:', data);
-      setNotifItems(data || []);
-    } catch (e) {
-      console.error('Failed to load bookings', e);
-      toast.error('Failed to load notifications');
-    }
+    const { data, error } = await supabase.from('bookings').select('id,user_id,status,address,notes,user_location,requested_at,scheduled_date,scheduled_time').eq('provider_id', provider.provider_id).in('status', ['booked', 'requested']).order('requested_at', { ascending: false }).limit(20);
+    if (error) return toast.error('Failed to load bookings');
+    setNotifItems(data || []);
   };
 
   const loadCompletedJobs = async () => {
-    console.log('Loading completed jobs for provider:', provider?.provider_id);
-    if (!provider?.provider_id) {
-      console.log('No provider ID available for completed jobs');
-      return;
-    }
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('id, user_id, status, address, notes, user_location, requested_at, scheduled_date, scheduled_time')
-        .eq('provider_id', provider.provider_id)
-        .eq('status', 'completed')
-        .order('requested_at', { ascending: false })
-        .limit(20);
-      if (error) {
-        console.error('Supabase error for completed jobs:', error);
-        throw error;
-      }
-      console.log('Fetched completed jobs:', data);
-      setCompletedItems(data || []);
-    } catch (e) {
-      console.error('Failed to load completed jobs', e);
-      toast.error('Failed to load completed jobs');
-    }
+    const { data, error } = await supabase.from('bookings').select('id,user_id,status,address,notes,user_location,requested_at,scheduled_date,scheduled_time').eq('provider_id', provider.provider_id).eq('status', 'completed').order('requested_at', { ascending: false }).limit(20);
+    if (error) return toast.error('Failed to load completed jobs');
+    setCompletedItems(data || []);
   };
 
   const toggleAvailability = async () => {
     if (!provider) return;
+    setIsTogglingAvail(true);
     try {
-      setIsTogglingAvail(true);
       const next = !Boolean(provider.is_available);
-      const { error } = await supabase
-        .from('providers')
-        .update({ is_available: next })
-        .eq('provider_id', provider.provider_id);
+      const { error } = await supabase.from('providers').update({ is_available: next }).eq('provider_id', provider.provider_id);
       if (error) throw error;
-      setProvider(prev => prev ? { ...prev, is_available: next } : prev);
+      setProvider((p) => ({ ...p, is_available: next }));
       toast.success(next ? 'You are now Available' : 'You are now Busy');
-    } catch (e) {
-      console.error('Failed to toggle availability', e);
+    } catch {
       toast.error('Failed to update availability');
-    } finally {
-      setIsTogglingAvail(false);
-    }
+    } finally { setIsTogglingAvail(false); }
   };
 
   const verifyIdentity = async () => {
-    try {
-      const a = (aadhaarVal || '').replace(/\D/g, '');
-      const aOk = /^\d{12}$/.test(a);
-      const p = (panVal || '').toUpperCase().trim();
-      const pOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(p);
-      if (!aOk) { toast.error('Enter a valid 12-digit Aadhaar number'); return; }
-      if (!pOk) { toast.error('Enter a valid PAN (e.g., ABCDE1234F)'); return; }
-      const { error } = await supabase
-        .from('providers')
-        .update({ is_verified: true, verification_date: new Date().toISOString() })
-        .eq('provider_id', provider.provider_id);
-      if (error) throw error;
-      setProvider(prev => prev ? { ...prev, is_verified: true, verification_date: new Date().toISOString() } : prev);
-      toast.success('Identity verified');
-    } catch (e) {
-      toast.error('Failed to verify identity');
-    }
+    const a = (aadhaarVal || '').replace(/\D/g, '');
+    const p = (panVal || '').toUpperCase().trim();
+    if (!/^\d{12}$/.test(a)) return toast.error('Enter a valid 12-digit Aadhaar number');
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(p)) return toast.error('Enter a valid PAN (e.g., ABCDE1234F)');
+    const { error } = await supabase.from('providers').update({ is_verified: true, verification_date: new Date().toISOString() }).eq('provider_id', provider.provider_id);
+    if (error) return toast.error('Failed to verify identity');
+    setProvider((x) => ({ ...x, is_verified: true, verification_date: new Date().toISOString() }));
+    toast.success('Identity verified');
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="loading-shimmer w-96 h-64 rounded-lg"></div>
-      </div>
-    );
-  }
+  const markWorkDone = async (bookingId) => {
+    const { error } = await supabase.from('bookings').update({ status: 'completed' }).eq('id', bookingId).eq('provider_id', provider.provider_id);
+    if (error) return toast.error('Failed to mark as completed');
+    toast.success('Marked as completed');
+    loadLatestBookings();
+  };
 
-  if (!provider) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="glass-card border-0 shadow-2xl p-8 text-center">
-          <CardTitle className="text-2xl text-red-600 mb-4">Provider Not Found</CardTitle>
-          <p className="text-gray-600">The provider ID you're looking for doesn't exist.</p>
-        </Card>
-      </div>
-    );
-  }
+  const handleLogout = async () => {
+    try { await supabase.auth.signOut(); } catch { }
+    navigate('/');
+  };
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><div className="loading-shimmer w-96 h-64 rounded-lg" /></div>;
+  if (!provider) return <div className="min-h-screen flex items-center justify-center"><Card className="p-8"><CardTitle className="text-red-600">Provider Not Found</CardTitle></Card></div>;
 
   return (
-    <div className="min-h-screen py-8 px-4">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm mb-8">
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold text-gray-800">Provider Dashboard</h1>
-              <div className="hidden md:flex items-center space-x-6 ml-8">
-                <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition">Dashboard</button>
-                <button onClick={() => navigate(`/account/${providerId}`)} className="text-sm font-medium text-gray-600 hover:text-gray-700 transition">Account</button>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button type="button" onClick={() => loadLatestBookings()} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
-                    <Bell className="h-4 w-4" />
-                    <span className="hidden sm:inline">Recent</span>
-                    {notifCount > 0 && (
-                      <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-red-600 text-white">
-                        {notifCount}
-                      </span>
-                    )}
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Recent Bookings</DialogTitle>
-                  </DialogHeader>
-                  <div className="mt-4">
-                    {notifItems.length === 0 ? (
-                      <div className="text-sm text-gray-600">No recent bookings.</div>
-                    ) : (
-                      <div className="divide-y space-y-4">
-                        {notifItems.map((b) => {
-                          const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
-                          const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
-                          const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
-                          return (
-                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <Badge className={b.status === 'booked' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                                    {b.status === 'booked' ? 'Booked' : 'Requested'}
-                                  </Badge>
-                                  <span className="text-xs text-gray-500">{new Date(b.requested_at).toLocaleString()}</span>
-                                </div>
-                                <div className="mt-1 text-sm text-gray-800 truncate">
-                                  Customer: {b.user_id || 'N/A'}
-                                </div>
-                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
-                                {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                {mapsUrl ? (
-                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Open in Maps</a>
-                                ) : (
-                                  <span className="text-xs text-gray-500">No location</span>
-                                )}
-                                <button type="button" onClick={() => markWorkDone(b.id)} className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">Mark Done</button>
-                                {/* Removed provider-side 'Record Payment' button; payments are initiated by user */}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button type="button" onClick={() => setMsgOpen(true)} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="hidden sm:inline">Messages</span>
-                    {msgCount > 0 && (
-                      <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
-                        {msgCount}
-                      </span>
-                    )}
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Messages</DialogTitle>
-                  </DialogHeader>
-                  <div className="mt-4">
-                    {msgItems.length === 0 ? (
-                      <div className="text-sm text-gray-600">No messages yet.</div>
-                    ) : (
-                      <div className="divide-y space-y-4">
-                        {msgItems.map((m) => (
-                          <div key={m.id} className="py-3 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm text-gray-800 truncate">From: {m.sender_id || 'user'}</div>
-                              {m.booking_id && <div className="text-xs text-gray-600">Booking: {m.booking_id}</div>}
-                              <div className="text-sm text-gray-700 mt-1 break-words">{m.content || ''}</div>
-                            </div>
-                            <div className="shrink-0 text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString() : ''}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button type="button" onClick={() => loadCompletedJobs()} className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
-                    <span className="hidden sm:inline">Completed</span>
-                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-emerald-600 text-white">
-                      {completedCount}
-                    </span>
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Completed Jobs</DialogTitle>
-                  </DialogHeader>
-                  <div className="mt-4">
-                    {completedItems.length === 0 ? (
-                      <div className="text-sm text-gray-600">No completed jobs yet.</div>
-                    ) : (
-                      <div className="divide-y space-y-4">
-                        {completedItems.map((b) => {
-                          const lat = typeof b?.user_location?.lat === 'number' ? b.user_location.lat : null;
-                          const lng = typeof b?.user_location?.lng === 'number' ? b.user_location.lng : null;
-                          const mapsUrl = lat && lng ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null;
-                          return (
-                            <div key={b.id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <Badge className="bg-emerald-100 text-emerald-700">
-                                    Completed
-                                  </Badge>
-                                  <span className="text-xs text-gray-500">
-                                    {b.requested_at ? new Date(b.requested_at).toLocaleString() : 'Recently completed'}
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-sm text-gray-800 truncate">
-                                  Customer: {b.user_id || 'N/A'}
-                                </div>
-                                <div className="text-sm text-gray-700 truncate">Address: {b.address || 'N/A'}</div>
-                                {b.notes && <div className="text-xs text-gray-600 mt-1">Notes: {b.notes}</div>}
-                                {(b.scheduled_date || b.scheduled_time) && (
-                                  <div className="text-xs text-gray-600 mt-1">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</div>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                {mapsUrl ? (
-                                  <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50">View Location</a>
-                                ) : (
-                                  <span className="text-xs text-gray-500">No location</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button type="button" className="relative inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
-                    <Wallet className="h-4 w-4" />
-                    <span className="hidden sm:inline">Wallet</span>
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Wallet className="h-5 w-5" />
-                      Wallet Balance
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="mt-4">
-                    <div className="wallet-card p-6">
-                      <div className="relative z-10">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-white/80 text-sm font-medium">Current Balance</p>
-                            <p className="text-3xl font-bold text-white" data-testid="wallet-balance">
-                              ₹{Number.isFinite(walletSum) ? walletSum.toFixed(2) : (Number.isFinite(provider?.wallet_balance) ? Number(provider.wallet_balance).toFixed(2) : '0.00')}
-                            </p>
-                          </div>
-                          <div className="text-white/60">
-                            <Wallet className="h-8 w-8" />
-                          </div>
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-white/20">
-                          <p className="text-white/80 text-sm">Provider ID: {provider.provider_id}</p>
-                          <p className="text-white/60 text-xs mt-1">
-                            Member since {new Date(provider.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-gray-100 hover:bg-gray-200 transition text-sm font-medium text-gray-700">
-                <span>Logout</span>
-              </button>
-            </div>
+    <div className="min-h-screen bg-[#f4f7fb] pb-10">
+      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm mb-8">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Provider Dashboard</h1>
+            <p className="text-xs text-slate-500">Operations overview</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Dialog><DialogTrigger asChild><button type="button" onClick={loadLatestBookings} className="relative px-3 py-2 rounded-full bg-slate-100 text-slate-700"><Bell className="h-4 w-4" />{notifCount > 0 && <span className="absolute -top-1 -right-1 text-xs bg-red-600 text-white rounded-full px-1">{notifCount}</span>}</button></DialogTrigger><DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Recent Bookings</DialogTitle></DialogHeader><div className="mt-4 space-y-3">{notifItems.length === 0 ? <p className="text-sm text-slate-500">No recent bookings.</p> : notifItems.map((b) => { const lat = b?.user_location?.lat; const lng = b?.user_location?.lng; const mapsUrl = (typeof lat === 'number' && typeof lng === 'number') ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : null; return <div key={b.id} className="p-3 border border-slate-200 rounded-xl"><div className="flex items-center gap-2"><Badge className={b.status === 'booked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{b.status}</Badge><span className="text-xs text-slate-500">{b.requested_at ? new Date(b.requested_at).toLocaleString() : ''}</span></div><p className="text-sm mt-1">Address: {formatAddress(b.address)}</p>{(b.scheduled_date || b.scheduled_time) && <p className="text-xs text-slate-500">When: {b.scheduled_date || ''} {b.scheduled_time || ''}</p>}<div className="mt-3 flex gap-2">{mapsUrl ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="px-3 py-2 text-sm border rounded-md">Open Maps</a> : <span className="text-xs text-slate-500">No location</span>}<button onClick={() => markWorkDone(b.id)} className="px-3 py-2 text-sm border rounded-md">Mark Done</button></div></div> })}</div></DialogContent></Dialog>
+            <Dialog><DialogTrigger asChild><button className="relative px-3 py-2 rounded-full bg-slate-100 text-slate-700"><MessageSquare className="h-4 w-4" />{msgCount > 0 && <span className="absolute -top-1 -right-1 text-xs bg-blue-600 text-white rounded-full px-1">{msgCount}</span>}</button></DialogTrigger><DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Messages</DialogTitle></DialogHeader><div className="mt-4 space-y-3">{msgItems.length === 0 ? <p className="text-sm text-slate-500">No messages yet.</p> : msgItems.map((m) => <div key={m.id} className="p-3 border border-slate-200 rounded-xl"><p className="text-sm">From: {m.sender_id || 'user'}</p><p className="text-sm text-slate-700 mt-1">{m.content || ''}</p></div>)}</div></DialogContent></Dialog>
+            <Dialog><DialogTrigger asChild><button type="button" onClick={loadCompletedJobs} className="px-3 py-2 rounded-full bg-slate-100 text-slate-700">Completed <span className="ml-1 text-xs bg-emerald-600 text-white rounded-full px-1">{completedCount}</span></button></DialogTrigger><DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Completed Jobs</DialogTitle></DialogHeader><div className="mt-4 space-y-3">{completedItems.length === 0 ? <p className="text-sm text-slate-500">No completed jobs yet.</p> : completedItems.map((b) => <div key={b.id} className="p-3 border border-slate-200 rounded-xl"><p className="text-sm">Address: {formatAddress(b.address)}</p></div>)}</div></DialogContent></Dialog>
+            <Dialog><DialogTrigger asChild><button className="px-3 py-2 rounded-full bg-slate-100 text-slate-700"><Wallet className="h-4 w-4" /></button></DialogTrigger><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Wallet Balance</DialogTitle></DialogHeader><div className="wallet-card p-6 mt-4"><p className="text-white/80 text-sm">Current Balance</p><p className="text-3xl font-bold text-white">Rs {Number.isFinite(walletSum) ? walletSum.toFixed(2) : (Number(provider?.wallet_balance || 0)).toFixed(2)}</p></div></DialogContent></Dialog>
+            <button onClick={handleLogout} className="px-3 py-2 rounded-full bg-slate-100 text-slate-700">Logout</button>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto">
-        {/* User Info */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center space-x-4 mb-4">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-emerald-600" />
-            </div>
-            <div className="text-left">
-              <p className="text-lg text-gray-800">Welcome back, {profile?.full_name || 'Provider'}</p>
-              <p className="text-sm text-gray-600">ID: {provider.provider_id}</p>
-            </div>
-          </div>
-          
-          {provider.is_verified && (
-            <Badge className="professional-badge text-lg px-6 py-2" data-testid="verification-status">
-              ✓ Verified Provider
-            </Badge>
-          )}
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="rounded-3xl bg-[linear-gradient(120deg,#0f172a,#1e293b)] text-white p-8 mb-6">
+          <p className="text-slate-300 text-sm">Welcome back</p>
+          <h2 className="text-3xl font-bold mt-1">{profile?.full_name || 'Provider'}</h2>
         </div>
 
-        {/* Collapsible Panels */}
-
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Main Content */}
-          {!provider.is_verified && (
-            <Card className="glass-card border-0 shadow-2xl">
-              <CardHeader>
-                <CardTitle>Identity Verification</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm text-gray-700">Aadhaar Number</label>
-                    <Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-700">PAN</label>
-                    <Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button onClick={verifyIdentity}>Verify</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {/* Availability */}
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                {provider.is_available ? (
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                ) : (
-                  <AlertTriangle className="h-6 w-6 text-amber-600" />
-                )}
-                <span>Availability</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-700">Current status:</span>
-                  <Badge className={provider.is_available ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                    {provider.is_available ? 'Available' : 'Busy'}
-                  </Badge>
-                </div>
-                <Button onClick={toggleAvailability} disabled={isTogglingAvail}>
-                  {isTogglingAvail ? 'Updating…' : provider.is_available ? 'Set Busy' : 'Set Available'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          {/* Reviews (Realtime) */}
-          <ReviewsPanel providerId={provider.provider_id} />
-          {/* Professional Status */}
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Award className="h-6 w-6 text-emerald-600" />
-                <span>Professional Status</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {provider.professions.map(profession => {
-                  const status = provider.professional_status[profession];
-                  const isProfessional = status === 'Professional';
-                  return (
-                    <div key={profession} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-semibold text-gray-800 capitalize">
-                          {profession.replace('_', ' ')}
-                        </p>
-                      </div>
-                      <div>
-                        {isProfessional ? (
-                          <Badge className="professional-badge">
-                            Professional
-                          </Badge>
-                        ) : (
-                          <Badge className="amateur-badge">
-                            Amateur/Freelancer
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Documents Status */}
-          <Card className="glass-card border-0 shadow-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Shield className="h-6 w-6 text-blue-600" />
-                <span>Document Status</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="font-medium text-gray-700">Trade License</span>
-                  <Badge variant={provider.has_trade_license ? 'default' : 'secondary'}>
-                    {provider.has_trade_license ? '✓ Uploaded' : '✗ Not Uploaded'}
-                  </Badge>
-                </div>
-
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="font-medium text-gray-700">Health Permit</span>
-                  <Badge variant={provider.has_health_permit ? 'default' : 'secondary'}>
-                    {provider.has_health_permit ? '✓ Uploaded' : '✗ Not Uploaded'}
-                  </Badge>
-                </div>
-
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="font-medium text-gray-700">Certificates</span>
-                  <Badge variant={provider.has_certificates ? 'default' : 'secondary'}>
-                    {provider.has_certificates ? '✓ Uploaded' : '✗ Not Uploaded'}
-                  </Badge>
-                </div>
-
-                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                  <span className="font-medium text-gray-700">ID Verification</span>
-                  <Badge className="professional-badge">
-                    ✓ Verified
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid md:grid-cols-3 gap-4 mb-6">
+          <Card className="rounded-2xl border-slate-200"><CardContent className="p-5"><p className="text-sm text-slate-500">Availability</p><div className="mt-2 flex items-center justify-between"><Badge className={provider.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{provider.is_available ? 'Available' : 'Busy'}</Badge><Button onClick={toggleAvailability} disabled={isTogglingAvail}>{isTogglingAvail ? 'Updating...' : (provider.is_available ? 'Set Busy' : 'Set Available')}</Button></div></CardContent></Card>
+          <Card className="rounded-2xl border-slate-200"><CardContent className="p-5"><p className="text-sm text-slate-500">Verification</p><div className="mt-2">{provider.is_verified ? <Badge className="bg-emerald-100 text-emerald-700">Verified</Badge> : <Badge variant="outline">Pending</Badge>}</div></CardContent></Card>
+          <Card className="rounded-2xl border-slate-200"><CardContent className="p-5"><p className="text-sm text-slate-500">Completed Jobs</p><p className="text-3xl font-bold text-slate-900 mt-2">{completedCount}</p></CardContent></Card>
         </div>
+
+        {!provider.is_verified && <Card className="border-slate-200 rounded-2xl mb-6"><CardHeader><CardTitle>Identity Verification</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-2 gap-3"><div><label className="text-sm text-slate-700">Aadhaar Number</label><Input value={aadhaarVal} onChange={(e) => setAadhaarVal(e.target.value)} placeholder="1234 5678 9012" /></div><div><label className="text-sm text-slate-700">PAN</label><Input value={panVal} onChange={(e) => setPanVal(e.target.value)} placeholder="ABCDE1234F" /></div></div><Button onClick={verifyIdentity} className="mt-4">Verify</Button></CardContent></Card>}
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card className="border-slate-200 rounded-2xl"><CardHeader><CardTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-cyan-700" />Professional Status</CardTitle></CardHeader><CardContent className="space-y-3">{(provider.professions || []).map((profession) => { const st = provider.professional_status?.[profession]; const isP = st === 'Professional'; return <div key={profession} className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between"><p className="font-medium capitalize">{profession.replace('_', ' ')}</p><Badge className={isP ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{isP ? 'Professional' : 'Amateur/Freelancer'}</Badge></div> })}</CardContent></Card>
+          <Card className="border-slate-200 rounded-2xl"><CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5 text-cyan-700" />Document Status</CardTitle></CardHeader><CardContent className="space-y-3">{[{ k: 'Trade License', v: provider.has_trade_license }, { k: 'Health Permit', v: provider.has_health_permit }, { k: 'Certificates', v: provider.has_certificates }, { k: 'ID Verification', v: provider.is_verified }].map((d) => <div key={d.k} className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between"><span className="font-medium">{d.k}</span><Badge className={d.v ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>{d.v ? 'Uploaded' : 'Not Uploaded'}</Badge></div>)}</CardContent></Card>
+        </div>
+
+        <div className="mt-6"><ReviewsPanel providerId={provider.provider_id} /></div>
       </div>
     </div>
   );
 };
 
 export default ProviderDashboard;
+
+

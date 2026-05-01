@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin } from 'lucide-react';
+import { MapPin, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from '../hooks/use-toast';
 import { supabase } from '../lib/supabaseClient';
+import { Button } from '../components/ui/button';
 
 const Geolocation = () => {
   const { t } = useLanguage();
@@ -150,9 +151,23 @@ const Geolocation = () => {
   };
 
   return (
-    <div className="min-h-screen pt-16 pb-4 px-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-3 flex items-center gap-2 text-slate-700 dark:text-slate-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 pt-5">
+      {/* Back Button - Outside Header */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </Button>
+      </div>
+      
+      {/* Live Provider Map */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mb-4 flex items-center gap-2 text-slate-700 dark:text-slate-300">
           <MapPin className="w-5 h-5 text-blue-600" />
           <h1 className="text-xl font-semibold">Live Providers Map</h1>
         </div>
@@ -163,6 +178,26 @@ const Geolocation = () => {
         {liveStatus === 'error' && (
           <div className="mt-3 text-sm text-red-600">Failed to load providers.</div>
         )}
+        
+        {/* Provider Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <div className="bg-white p-4 rounded-lg shadow text-center">
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">{liveProviders.length}</div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">Active Providers</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow text-center">
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">
+              {liveProviders.filter(p => p.location && p.location.lat && p.location.lng).length}
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">With Location</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow text-center">
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">
+              {liveProviders.filter(p => p.is_verified).length}
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">Verified</div>
+          </div>
+        </div>
       </div>
     </div>
   );

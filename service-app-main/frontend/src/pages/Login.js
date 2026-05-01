@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogIn, Eye, EyeOff } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
+import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -10,264 +9,131 @@ import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
 const Login = () => {
-  const { t } = useLanguage();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [role, setRole] = useState('user');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Handle email verification redirect (exchange code for session)
   useEffect(() => {
     const exchange = async () => {
       if (window.location.hash && window.location.hash.includes('access_token')) {
         try {
           const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.hash);
-          // Clean the hash from URL regardless
           window.history.replaceState(null, '', window.location.pathname);
           if (error) return;
           const user = data?.user;
           if (!user) return;
-          // Fetch role and redirect like a normal login
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('role, full_name, phone')
-            .eq('id', user.id)
-            .maybeSingle();
+          const { data: prof } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle();
           const roleFromDb = prof?.role || 'user';
           localStorage.setItem('user', JSON.stringify({ id: user.id, email: user.email, fullName: prof?.full_name }));
           localStorage.setItem('role', roleFromDb);
           localStorage.setItem('isVerified', 'true');
-          toast.success('Email verified', { description: 'Your email has been confirmed.' });
           const providerUrl = process.env.REACT_APP_PROVIDER_URL;
           if (roleFromDb === 'provider' && providerUrl) {
             window.location.href = providerUrl;
           } else {
             navigate('/dashboard');
           }
-        } catch { }
+        } catch {}
       }
     };
     exchange();
   }, [navigate]);
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    toast('Signing in...');
-    const email = (formData.email || '').trim();
-    const password = formData.password || '';
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailValid) {
-      toast.error('Invalid email', { description: 'Please enter a valid email address.' });
-      return;
-    }
-    if (!password) {
-      toast.error('Password required', { description: 'Enter your password to continue.' });
-      return;
-    }
+    setIsLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) {
-        const msg = (error.message || '').toLowerCase();
-        if (msg.includes('invalid login credentials') || msg.includes('user not found ')) {
-          toast('No account found', { description: 'do enter correct email and password.' });
-        } else {
-          toast.error('Error', { description: error.message });
-        }
-        setShowForgotPassword(true);
-        return;
-      }
-      const user = data.user;
-      if (!user) {
-        toast.error('Error', { description: 'No user session returned' });
-        return;
-      }
-      // Fetch role from profiles
-      const { data: prof, error: profErr } = await supabase
-        .from('profiles')
-        .select('role, full_name, phone')
-        .eq('id', user.id)
-        .maybeSingle();
-      const roleFromDb = prof?.role || role || 'user';
-      // Persist minimal info for UI
-      localStorage.setItem('user', JSON.stringify({ id: user.id, email: user.email, fullName: prof?.full_name }));
+      const { data, error } = await supabase.auth.signInWithPassword({ email: formData.email, password: formData.password });
+      if (error) return toast.error('Login failed', { description: error.message });
+      const user = data?.user;
+      if (!user) return toast.error('Login failed', { description: 'No user data received' });
+      const { data: prof } = await supabase.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle();
+      const roleFromDb = prof?.role || 'user';
+      localStorage.setItem('user', JSON.stringify({ id: user.id, email: user.email, fullName: prof?.full_name || user.email?.split('@')[0] }));
       localStorage.setItem('role', roleFromDb);
-      localStorage.setItem('isVerified', 'true');
-      toast.success('Welcome back!', { description: 'Login successful' });
-      const providerUrl = process.env.REACT_APP_PROVIDER_URL || '/register/step/1';
-      if (roleFromDb === 'provider') {
+      localStorage.setItem('isVerified', user.email_confirmed_at ? 'true' : 'false');
+      toast.success('Welcome back');
+      const providerUrl = process.env.REACT_APP_PROVIDER_URL;
+      if (roleFromDb === 'provider' && providerUrl) {
         window.location.href = providerUrl;
       } else {
-        navigate('/dashboard', { replace: true });
+        navigate('/dashboard');
       }
-    } catch (err) {
-      toast.error('Login error', { description: String(err) });
+    } catch {
+      toast.error('Login failed', { description: 'An unexpected error occurred' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleGoogleLogin = () => {
-    (async () => {
-      try {
-        toast('Opening Google sign-in...');
-        const redirectTo = `${window.location.origin}/auth/callback`;
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo,
-            queryParams: {
-              prompt: 'select_account',
-              access_type: 'offline',
-            },
-          },
-        });
-        if (error) throw error;
-        // Supabase will handle redirect to Google; no further action here.
-      } catch (err) {
-        toast.error('Google login failed', { description: String(err?.message || err) });
-      }
-    })();
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!formData.email) return toast.error('Email required', { description: 'Please enter your email address' });
+    const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
+    if (error) return toast.error('Reset failed', { description: error.message });
+    toast.success('Password reset link sent');
+    setShowForgotPassword(false);
   };
 
   return (
-    <div className="min-h-screen pt-20 pb-12 px-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="max-w-md mx-auto">
-        <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/90 dark:bg-slate-800/90">
-          <CardHeader className="space-y-2 text-center pb-6">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center mb-4 animate-pulse">
-              <LogIn className="w-8 h-8 text-white" />
-            </div>
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-              {t('loginTitle')}
-            </CardTitle>
-            <CardDescription className="text-base">
-              {t('loginSubtitle')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Role Selection */}
-            <div className="mb-4">
-              <Label className="text-sm font-medium">Select Role</Label>
-              <div className="mt-2 flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="role"
-                    value="user"
-                    checked={role === 'user'}
-                    onChange={() => setRole('user')}
-                  />
-                  <span>User</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="role"
-                    value="provider"
-                    checked={role === 'provider'}
-                    onChange={() => setRole('provider')}
-                  />
-                  <span>Provider</span>
-                </label>
-              </div>
-            </div>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="you@example.com"
-                  className="mt-2 transition-all duration-200 focus:scale-[1.02]"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="password">{t('password')}</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Enter your password"
-                    className="mt-2 pr-10 transition-all duration-200 focus:scale-[1.02]"
-                    required
-                  />
-                  <button
-                    type="button"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    onClick={() => setShowPassword((s) => !s)}
-                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700"
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
+    <div className="min-h-screen pt-16 bg-[#f4f7fb]">
+      <div className="min-h-[calc(100vh-4rem)] grid md:grid-cols-2">
+        <div className="hidden md:flex flex-col justify-center px-12 bg-[linear-gradient(145deg,#020617,#0f172a)] text-white">
+          <h1 className="display-type text-5xl font-extrabold mb-4">Welcome Back</h1>
+          <p className="text-slate-300 text-lg leading-relaxed">Continue with FIXORA and manage bookings in a clean, focused workspace.</p>
+        </div>
+
+        <div className="flex items-center justify-center p-4">
+          <Card className="w-full max-w-md border-slate-200 shadow-xl bg-white rounded-2xl">
+            <CardHeader>
+              <CardTitle className="display-type text-3xl">Sign In</CardTitle>
+              <CardDescription>Access your account dashboard</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input id="email" type="email" className="pl-9" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+                  </div>
                 </div>
-              </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input id="password" type={showPassword ? 'text' : 'password'} className="pl-9 pr-10" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-700" disabled={isLoading}>
+                  {isLoading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+
+              <button type="button" onClick={() => setShowForgotPassword(!showForgotPassword)} className="text-sm text-slate-600 hover:text-slate-900">
+                Forgot password?
+              </button>
+
               {showForgotPassword && (
-                <div className="animate-in slide-in-from-top duration-300">
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-blue-600 hover:text-cyan-500 transition-colors duration-200"
-                  >
-                    {t('forgotPassword')}
-                  </Link>
-                </div>
+                <form onSubmit={handleForgotPassword} className="space-y-3 rounded-lg border border-slate-200 p-3 bg-slate-50">
+                  <p className="text-sm text-slate-600">We will send a reset link to your email.</p>
+                  <Button type="submit" variant="outline" className="w-full">Send Reset Link</Button>
+                </form>
               )}
-              <Button
-                type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-medium py-6 text-lg transition-all duration-300 hover:scale-[1.02]"
-              >
-                {t('loginButton')}
-              </Button>
-            </form>
 
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                  Or continue with
-                </span>
-              </div>
-            </div>
-
-            {/* Google Login */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleGoogleLogin}
-              className="w-full py-6 transition-all duration-300 hover:scale-[1.02]"
-            >
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Login with Google
-            </Button>
-
-            {/* Signup Link */}
-            <div className="mt-6 text-center animate-in fade-in duration-700">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                {t('noAccount')}{' '}
-                <Link
-                  to="/signup"
-                  className="text-blue-600 hover:text-cyan-500 font-medium transition-colors duration-200 hover:underline"
-                >
-                  {t('signupLink')}
-                </Link>
+              <p className="text-sm text-slate-600 text-center">
+                New user? <Link to="/signup" className="text-cyan-700 font-medium">Create account</Link>
               </p>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

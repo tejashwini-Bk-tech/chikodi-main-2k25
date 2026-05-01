@@ -49,10 +49,9 @@ const RequireProviderAuth = ({ children }) => {
 function App() {
   return (
     <LanguageProvider>
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
         <BrowserRouter>
           <Routes>
-
             <Route path="/" element={<Home />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />

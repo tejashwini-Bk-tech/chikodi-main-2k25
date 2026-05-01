@@ -105,6 +105,15 @@ async def get_status_checks():
         status_checks = await db.status_checks.find().to_list(1000)
         return [StatusCheck(**status_check) for status_check in status_checks]
 
+@api_router.get("/metrics/overview")
+async def get_metrics_overview():
+    """Returns mock metrics data matching frontend expectations"""
+    return {
+        "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        "users": [12, 19, 7, 14, 20, 25, 22],
+        "providers": [5, 9, 11, 8, 12, 15, 17]
+    }
+
 # Include the router in the main app
 app.include_router(api_router)
 

@@ -1,102 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, BarChart3, Users, User, Bell, Briefcase } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Sparkles, Search, MapPin, Star } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabaseClient';
-import { toast } from 'sonner';
+
+const SERVICE_CATEGORIES = [
+  { name: 'Home Cleaning', key: 'cleaning' },
+  { name: 'Plumbing', key: 'plumbing' },
+  { name: 'Electrician', key: 'electrical' },
+  { name: 'AC Repair', key: 'ac_repair' },
+  { name: 'Painting', key: 'painting' },
+  { name: 'Carpentry', key: 'carpentry' },
+  { name: 'Salon At Home', key: 'salon' },
+  { name: 'Appliance Repair', key: 'appliance_repair' },
+];
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
-  const [metrics, setMetrics] = useState(null);
-  const [metricsStatus, setMetricsStatus] = useState('idle');
-  const [provider, setProvider] = useState(null);
-  const [providerStatus, setProviderStatus] = useState('idle');
+  const [query, setQuery] = useState('');
+  const [userLocation, setUserLocation] = useState(null);
   const [liveProviders, setLiveProviders] = useState([]);
   const [liveStatus, setLiveStatus] = useState('idle');
-  const [userLocation, setUserLocation] = useState(null);
+  const [recentBookings, setRecentBookings] = useState([]);
+  const [bookingStatus, setBookingStatus] = useState('idle');
+  const [providerMeta, setProviderMeta] = useState({});
   const [leafletReady, setLeafletReady] = useState(false);
   const mapEl = useRef(null);
   const mapRef = useRef(null);
   const [markersRef] = [useRef({})];
-  const [completedCount, setCompletedCount] = useState(0);
-  const [userId, setUserId] = useState(null);
-  const [userEmail, setUserEmail] = useState(null);
-  const [userBookings, setUserBookings] = useState([]);
 
-  useEffect(() => {
-    const fetchProvider = async () => {
-      try {
-        setProviderStatus('loading');
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user || null;
-        setUserId(user?.id || null);
-        setUserEmail(user?.email || null);
-
-        if (!user?.id) {
-          setProvider(null);
-          setProviderStatus('unauth');
-          return;
-        }
-
-        // Fetch provider profile
-        const { data, error } = await supabase
-          .from('providers')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (error) throw error;
-        setProvider(data || null);
-
-        // Fetch user's bookings to extract services they've booked
-        const { data: bookings, error: bookingError } = await supabase
-          .from('bookings')
-          .select('service_type')
-          .eq('user_id', user.id);
-        if (!bookingError && bookings) {
-          setUserBookings(bookings);
-        }
-
-        setProviderStatus('success');
-      } catch (e) {
-        console.error('Failed to load provider:', e);
-        setProviderStatus('error');
-        setProvider(null);
-      }
-    };
-    fetchProvider();
-  }, []);
-
-  // Realtime: completed bookings for this user
-  useEffect(() => {
-    if (!userId) return;
-    let channel;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('status', 'completed');
-        if (!error && !cancelled) setCompletedCount((data || []).length);
-      } catch (_) { }
-    };
-    refresh();
-    try {
-      channel = supabase
-        .channel(`realtime-user-completed-${userId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${userId}` }, async () => {
-          await refresh();
-        })
-        .subscribe();
-    } catch (_) { }
-    return () => { try { channel && supabase.removeChannel(channel); } catch (_) { } cancelled = true; };
-  }, [userId]);
-
-  // Load saved user location (set on the Geolocation page)
   useEffect(() => {
     try {
       const raw = localStorage.getItem('userLocation');
@@ -106,7 +38,78 @@ const Dashboard = () => {
     }
   }, []);
 
-  // Live providers with location (listens for realtime updates)
+  useEffect(() => {
+    let channel;
+    const loadRecentBookings = async () => {
+      try {
+        setBookingStatus('loading');
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) {
+          setRecentBookings([]);
+          setBookingStatus('success');
+          return;
+        }
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('id, provider_id, status, scheduled_date, scheduled_time, requested_at')
+          .eq('user_id', userId)
+          .order('requested_at', { ascending: false })
+          .limit(8);
+        if (error) throw error;
+        const rows = data || [];
+        setRecentBookings(rows);
+
+        const providerIds = Array.from(new Set(rows.map((r) => r.provider_id).filter(Boolean)));
+        if (providerIds.length > 0) {
+          const { data: providersData } = await supabase
+            .from('providers')
+            .select('provider_id, user_id, professions, is_verified')
+            .in('provider_id', providerIds);
+
+          const userIds = Array.from(new Set((providersData || []).map((p) => p.user_id).filter(Boolean)));
+          let profilesById = {};
+          if (userIds.length > 0) {
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, full_name, phone, email')
+              .in('id', userIds);
+            profilesById = (profilesData || []).reduce((acc, p) => {
+              acc[p.id] = p;
+              return acc;
+            }, {});
+          }
+
+          const meta = (providersData || []).reduce((acc, p) => {
+            const profile = profilesById[p.user_id] || {};
+            acc[p.provider_id] = {
+              name: profile.full_name || 'Service Provider',
+              phone: profile.phone || '',
+              email: profile.email || '',
+              profession: (p.professions && p.professions[0]) ? String(p.professions[0]).replace('_', ' ') : 'General Service',
+              verified: !!p.is_verified,
+            };
+            return acc;
+          }, {});
+          setProviderMeta(meta);
+        } else {
+          setProviderMeta({});
+        }
+        setBookingStatus('success');
+      } catch {
+        setBookingStatus('error');
+      }
+    };
+    loadRecentBookings();
+    channel = supabase
+      .channel('realtime-user-bookings-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        loadRecentBookings();
+      })
+      .subscribe();
+    return () => { try { channel && supabase.removeChannel(channel); } catch {} };
+  }, []);
+
   useEffect(() => {
     let channel;
     const load = async () => {
@@ -120,76 +123,23 @@ const Dashboard = () => {
         if (error) throw error;
         setLiveProviders(data || []);
         setLiveStatus('success');
-      } catch (e) {
-        console.error('Failed to load providers for live map', e);
+      } catch {
         setLiveStatus('error');
       }
-      // subscribe to realtime updates on providers table
-      try {
-        channel = supabase
-          .channel('realtime-providers')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'providers' }, (payload) => {
-            const row = payload.new || payload.old;
-            if (!row) return;
-            setLiveProviders((prev) => {
-              const idx = prev.findIndex((p) => p.provider_id === row.provider_id);
-              // For insert/update, upsert; for delete, remove
-              if (payload.eventType === 'DELETE') {
-                if (idx === -1) return prev;
-                const copy = prev.slice();
-                copy.splice(idx, 1);
-                return copy;
-              }
-              const nextRow = {
-                provider_id: row.provider_id,
-                professions: row.professions || [],
-                is_verified: !!row.is_verified,
-                location: row.location || null,
-                last_location_at: row.last_location_at || null,
-              };
-              if (idx === -1) return [nextRow, ...prev];
-              const copy = prev.slice();
-              copy[idx] = nextRow;
-              return copy;
-            });
-          })
-          .subscribe();
-      } catch (e) {
-        // ignore subscription errors
-      }
+      channel = supabase
+        .channel('realtime-providers-market')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'providers' }, () => {
+          load();
+        })
+        .subscribe();
     };
     load();
-    return () => {
-      try { channel && supabase.removeChannel(channel); } catch (_) { }
-    };
+    return () => { try { channel && supabase.removeChannel(channel); } catch {} };
   }, []);
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        setMetricsStatus('loading');
-        const url = `${process.env.REACT_APP_BACKEND_URL}/api/metrics/overview`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Failed');
-        const data = await res.json();
-        setMetrics(data);
-        setMetricsStatus('success');
-      } catch (e) {
-        setMetrics({
-          labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-          users: [12, 19, 7, 14, 20, 25, 22],
-          providers: [5, 9, 11, 8, 12, 15, 17]
-        });
-        setMetricsStatus('error');
-      }
-    };
-    fetchMetrics();
-  }, []);
-
-  // Nearby providers within 10 km from saved userLocation
   const nearbyProviders = useMemo(() => {
     if (!userLocation || !Array.isArray(liveProviders)) return [];
-    const R = 6371; // km
+    const R = 6371;
     const toRad = (v) => (v * Math.PI) / 180;
     const distKm = (a, b) => {
       const dLat = toRad(b.lat - a.lat);
@@ -199,64 +149,57 @@ const Dashboard = () => {
       const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
       return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
     };
-    const withDist = liveProviders.map((p) => {
-      const has = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
-      const d = has ? distKm(userLocation, { lat: p.location.lat, lng: p.location.lng }) : Infinity;
-      return { ...p, _distance_km: d };
-    });
-    const filtered = withDist.filter((p) => p._distance_km <= 10);
-    filtered.sort((a, b) => a._distance_km - b._distance_km);
-    return filtered;
+
+    return liveProviders
+      .map((p) => {
+        const has = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
+        const d = has ? distKm(userLocation, { lat: p.location.lat, lng: p.location.lng }) : Infinity;
+        return { ...p, _distance_km: d };
+      })
+      .filter((p) => p._distance_km <= 15)
+      .sort((a, b) => a._distance_km - b._distance_km)
+      .slice(0, 8);
   }, [liveProviders, userLocation]);
 
-  // Leaflet: load CSS/JS dynamically once
   useEffect(() => {
     if (window.L) { setLeafletReady(true); return; }
-    const cssId = 'leaflet-css';
-    if (!document.getElementById(cssId)) {
+    if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
-      link.id = cssId;
+      link.id = 'leaflet-css';
       link.rel = 'stylesheet';
       link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
       document.head.appendChild(link);
     }
-    const jsId = 'leaflet-js';
-    if (!document.getElementById(jsId)) {
+    if (!document.getElementById('leaflet-js')) {
       const script = document.createElement('script');
-      script.id = jsId;
+      script.id = 'leaflet-js';
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
       script.onload = () => setLeafletReady(true);
-      script.onerror = () => { };
       document.body.appendChild(script);
     } else {
       setLeafletReady(true);
     }
   }, []);
 
-  // Initialize map once
   useEffect(() => {
-    if (!leafletReady || !mapEl.current || mapRef.current) return;
-    const L = window?.L;
-    if (!L) return;
+    if (!leafletReady || !mapEl.current || mapRef.current || !window?.L) return;
+    const L = window.L;
     mapRef.current = L.map(mapEl.current).setView([20.5937, 78.9629], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(mapRef.current);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(mapRef.current);
   }, [leafletReady]);
 
-  // Update markers from nearbyProviders
   useEffect(() => {
-    const L = window?.L;
-    if (!leafletReady || !mapRef.current || !L) return;
+    if (!leafletReady || !mapRef.current || !window?.L) return;
+    const L = window.L;
     const map = mapRef.current;
     const markers = markersRef.current;
     const ids = new Set();
+
     for (const p of nearbyProviders) {
       const id = p.provider_id;
       ids.add(id);
-      const ok = typeof p?.location?.lat === 'number' && typeof p?.location?.lng === 'number';
-      if (!ok) continue;
+      if (typeof p?.location?.lat !== 'number' || typeof p?.location?.lng !== 'number') continue;
       const latlng = [p.location.lat, p.location.lng];
       const label = (p.professions?.[0] || 'Provider').replace('_', ' ');
       const popup = `${label}<br/>${p._distance_km?.toFixed(1)} km away`;
@@ -266,308 +209,110 @@ const Dashboard = () => {
         markers[id] = L.marker(latlng).addTo(map).bindPopup(popup);
       }
     }
+
     Object.keys(markers).forEach((id) => {
       if (!ids.has(id)) {
         map.removeLayer(markers[id]);
         delete markers[id];
       }
     });
-    const latlngs = Object.values(markers).map(m => m.getLatLng());
-    if (latlngs.length) {
-      const bounds = L.latLngBounds(latlngs);
-      map.fitBounds(bounds.pad(0.2));
-    }
+
+    const latlngs = Object.values(markers).map((m) => m.getLatLng());
+    if (latlngs.length) map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
   }, [nearbyProviders, leafletReady]);
 
-  const chartPath = useMemo(() => {
-    if (!metrics) return '';
-    const width = 280;
-    const height = 80;
-    const pad = 8;
-    const values = metrics.users || [];
-    const max = Math.max(1, ...values);
-    const step = (width - pad * 2) / Math.max(1, values.length - 1);
-    return values
-      .map((v, i) => {
-        const x = pad + i * step;
-        const y = height - pad - (v / max) * (height - pad * 2);
-        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }, [metrics]);
+  const filteredServices = SERVICE_CATEGORIES.filter((s) => s.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="min-h-screen pt-20 pb-12 px-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8 p-8 rounded-3xl bg-gradient-to-r from-blue-700 via-cyan-600 to-emerald-500 text-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-700">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight drop-shadow-sm">FIXORA</h1>
-            <div className="flex items-center gap-3">
-              <span className="text-xs uppercase tracking-widest text-white/80">{t('servicePlatform')}</span>
-              {userId && (
-                <button onClick={() => navigate('/payments')} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition">
-                  <Bell className="h-4 w-4" />
-                  <span className="text-xs">{t('completed')}</span>
-                  {completedCount > 0 && (
-                    <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold bg-white text-blue-700">
-                      {completedCount}
-                    </span>
-                  )}
-                </button>
-              )}
+    <div className="min-h-screen bg-[#f4f7fb] pb-16">
+      <section className="pt-20 px-4">
+        <div className="max-w-6xl mx-auto rounded-3xl bg-[linear-gradient(120deg,#0f172a,#1e293b)] text-white p-8 md:p-12 relative overflow-hidden min-h-[320px] flex items-center">
+          <div className="absolute -right-10 -top-10 w-52 h-52 bg-cyan-200/20 rounded-full blur-3xl animate-pulse" />
+          <div className="relative">
+            <p className="inline-flex items-center gap-2 text-cyan-100 text-sm font-semibold mb-3"><Sparkles className="w-4 h-4" /> Find trusted home services</p>
+            <h1 className="display-type text-4xl md:text-5xl font-extrabold mb-3">What do you need today?</h1>
+            <p className="text-slate-200 max-w-2xl">Choose a service, compare nearby professionals, and book quickly.</p>
+            <div className="mt-6 max-w-xl relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search service (e.g. plumbing, cleaning)"
+                className="w-full rounded-xl border border-white/30 bg-white text-slate-900 pl-10 pr-4 py-3 outline-none"
+              />
             </div>
           </div>
-          <p className="mt-2 text-base md:text-lg text-white/90 leading-relaxed tracking-wide">{t('slogan')}</p>
         </div>
+      </section>
 
-        {/* User Profile Cards Section */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* User Name Card */}
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-purple-600" />
-                <CardTitle className="text-base font-semibold">{t('userName') || 'User Name'}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-lg font-bold text-gray-800 truncate">
-                {userEmail ? userEmail.split('@')[0].toUpperCase() : 'Guest User'}
-              </p>
-              <p className="text-xs text-gray-500 mt-1 truncate">{userEmail || 'No email'}</p>
-            </CardContent>
-          </Card>
+      <section className="px-4 mt-6">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="display-type text-2xl font-bold text-slate-900 mb-4">Popular Services</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {filteredServices.map((service, i) => (
+              <button
+                key={service.key}
+                onClick={() => navigate('/providers')}
+                className="rounded-2xl border border-slate-200 bg-white p-4 text-left hover:shadow-md hover:-translate-y-1 transition-all duration-300 animate-in fade-in slide-in-from-bottom"
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
+                <p className="font-semibold text-slate-900">{service.name}</p>
+                <p className="text-xs text-slate-500 mt-1">Browse providers</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
-          {/* Location Card */}
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-red-600" />
-                <CardTitle className="text-base font-semibold">{t('currentLocation') || 'Location'}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {userLocation ? (
-                <>
-                  <p className="text-lg font-bold text-gray-800">
-                    {userLocation.address || `${userLocation.lat?.toFixed(4)}, ${userLocation.lng?.toFixed(4)}`}
+      <section className="px-4 mt-8">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-7 rounded-2xl bg-white border border-slate-200 p-5 min-h-[430px]">
+            <h3 className="display-type text-xl font-bold mb-4">Live Providers Near You</h3>
+            <div className="relative">
+              <div ref={mapEl} className="w-full h-[360px] rounded-xl overflow-hidden border" />
+              {!userLocation && <div className="absolute inset-0 rounded-xl bg-white/90 flex items-center justify-center text-slate-500">Set location to view nearby providers</div>}
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200 p-5 min-h-[430px]">
+            <h3 className="display-type text-xl font-bold mb-4">Recent Bookings</h3>
+            <div className="space-y-3 max-h-[360px] overflow-y-auto">
+              {bookingStatus === 'loading' && <p className="text-sm text-slate-500">Loading bookings...</p>}
+              {bookingStatus === 'error' && <p className="text-sm text-red-500">Unable to load bookings right now.</p>}
+              {bookingStatus === 'success' && recentBookings.map((b) => (
+                <div key={b.id} className="rounded-xl border border-slate-200 p-3">
+                  <p className="font-semibold text-slate-900">Booking #{String(b.id).slice(0, 8)}</p>
+                  <p className="text-sm font-medium text-slate-700 mt-1">
+                    {providerMeta[b.provider_id]?.name || 'Service Provider'}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {userLocation.address ? `${userLocation.lat?.toFixed(4)}, ${userLocation.lng?.toFixed(4)}` : 'Coordinates set'}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg font-bold text-gray-600">Not Set</p>
-                  <p className="text-xs text-gray-500 mt-1">Set your location to find providers</p>
-                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/geolocation')}>
-                    {t('setLocation') || 'Set Location'}
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Services Requested Card */}
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-amber-600" />
-                <CardTitle className="text-base font-semibold">{t('servicesBooked') || 'Services'}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {userBookings.length > 0 ? (
-                <>
-                  <p className="text-lg font-bold text-gray-800">{userBookings.length}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {Array.from(new Set(userBookings.map(b => b.service_type))).slice(0, 2).join(', ')}
-                    {Array.from(new Set(userBookings.map(b => b.service_type))).length > 2 ? ` +${Array.from(new Set(userBookings.map(b => b.service_type))).length - 2} more` : ''}
-                  </p>
-                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/providers')}>
-                    {t('browseMore') || 'Browse More'}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg font-bold text-gray-600">0 Bookings</p>
-                  <p className="text-xs text-gray-500 mt-1">Browse and book services</p>
-                  <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/providers')}>
-                    {t('browse') || 'Browse'}
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-0 shadow hover:shadow-md transition">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('map') || 'Map'}</CardTitle>
-              </div>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardMapDesc') || 'View and interact with live map'}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" onClick={() => navigate('/geolocation')}>{t('openMap') || 'Open Map'}</Button>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow hover:shadow-md transition">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-emerald-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('stats') || 'Stats'}</CardTitle>
-              </div>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardAnalysesDesc') || 'Real-time activity overview'}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <svg width="100%" height="100" viewBox="0 0 300 100" preserveAspectRatio="none">
-                <path d={chartPath} fill="none" stroke="#2563eb" strokeWidth="3" />
-              </svg>
-              <div className="text-xs text-slate-500 mt-2">
-                {metricsStatus === 'loading' ? (t('loadingMetrics') || 'Loading metrics…') : metricsStatus === 'error' ? (t('showingDemoData') || 'Showing demo data') : (t('live') || 'Live')}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow hover:shadow-md transition">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('browse') || 'Browse'}</CardTitle>
-              </div>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardFindProvidersDesc') || 'Browse and select providers'}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white" onClick={() => navigate('/providers')}>{t('browse') || 'Browse'}</Button>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow hover:shadow-md transition">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <User className="w-5 h-5 text-pink-600" />
-                <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('profile') || 'Profile'}</CardTitle>
-              </div>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('dashboardProfileDesc') || 'Manage your details'}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" onClick={() => navigate('/profile')}>{t('openProfile') || 'Open Profile'}</Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Map column */}
-          <Card className="border-0 shadow lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('nearbyMap')}</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('nearbyMapDesc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div ref={mapEl} className="w-full h-72 rounded-lg overflow-hidden border" />
-              {!userLocation && (
-                <div className="mt-3 text-sm text-slate-600">{t('tipSetLocation')}</div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Sidebar list */}
-          <Card className="border-0 shadow">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('nearbyProvidersTitle')}</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('nearbyProvidersDesc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!userLocation && (
-                <div className="text-sm text-slate-600">{t('noSavedLocation')}</div>
-              )}
-              {userLocation && liveStatus === 'loading' && (
-                <div className="text-sm text-slate-600">{t('loadingProviders')}</div>
-              )}
-              {userLocation && liveStatus === 'error' && (
-                <div className="text-sm text-red-600">{t('providersLoadFail')}</div>
-              )}
-              {userLocation && nearbyProviders.length === 0 && liveStatus === 'success' && (
-                <div className="text-sm text-slate-600">{t('noProvidersWithin10')}</div>
-              )}
-              {userLocation && nearbyProviders.length > 0 && (
-                <div className="divide-y">
-                  {nearbyProviders.map((p) => (
-                    <div key={p.provider_id} className="py-3 flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">{(p.professions?.[0] || 'Provider').replace('_', ' ')}</div>
-                        <div className="text-xs text-slate-600 mt-1">
-                          {`${p._distance_km.toFixed(1)} km away`}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-slate-500">{p.last_location_at ? new Date(p.last_location_at).toLocaleTimeString() : ''}</div>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/provider/${p.provider_id}`)}>{t('view')}</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-10">
-          <Card className="border-0 shadow">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold tracking-tight leading-tight">{t('myProviderProfile')}</CardTitle>
-              <CardDescription className="text-sm text-slate-600 leading-relaxed">{t('providerDetailsFromSupabase')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {providerStatus === 'loading' && (
-                <div className="text-sm text-slate-600">{t('loadingProvider')}</div>
-              )}
-              {providerStatus === 'unauth' && (
-                <div className="text-sm text-red-600">{t('loginToViewProvider')}</div>
-              )}
-              {providerStatus === 'error' && (
-                <div className="text-sm text-red-600">{t('providerLoadFail')}</div>
-              )}
-              {provider && (
-                <div className="space-y-2">
-                  <div className="text-sm">{t('providerId')}: <span className="font-mono">{provider.provider_id}</span></div>
-                  <div className="text-sm">{t('professions')}: {(provider.professions || []).join(', ')}</div>
-                  <div className="text-sm">{t('verified')}: {provider.is_verified ? t('yes') : t('no')}</div>
-                  <div className="text-sm">{t('location')}: {typeof provider?.location?.lat === 'number' && typeof provider?.location?.lng === 'number' ? `${provider.location.lat.toFixed(5)}, ${provider.location.lng.toFixed(5)}` : 'N/A'}</div>
-                  <div className="text-sm">{t('lastLocationUpdate')}: {provider.last_location_at ? new Date(provider.last_location_at).toLocaleString() : 'N/A'}</div>
-                  <div className="pt-2">
-                    <Button variant="outline" onClick={async () => {
-                      if (!('geolocation' in navigator)) { toast.error('Geolocation not supported'); return; }
-                      navigator.geolocation.getCurrentPosition(async (pos) => {
-                        try {
-                          const { latitude, longitude, accuracy } = pos.coords || {};
-                          const patch = { location: { lat: latitude, lng: longitude, accuracy }, last_location_at: new Date().toISOString() };
-                          const { error } = await supabase.from('providers').update(patch).eq('provider_id', provider.provider_id);
-                          if (error) throw error;
-                          toast.success(t('locationUpdated'));
-                          setProvider(prev => prev ? { ...prev, ...patch } : prev);
-                        } catch (e) {
-                          console.error('Failed to update location', e);
-                          toast.error(t('locationUpdateFailed'));
-                        }
-                      }, (err) => toast.error(err?.message || 'Failed to get location'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-                    }}>
-                      {t('updateMyLocation')}
-                    </Button>
+                  <div className="mt-1 text-xs text-slate-500 space-y-1">
+                    <p>Service: <span className="font-medium text-slate-700 capitalize">{providerMeta[b.provider_id]?.profession || 'General Service'}</span></p>
+                    <p>Status: <span className="font-medium text-slate-700 capitalize">{b.status || 'requested'}</span></p>
+                    <p>Date: <span className="font-medium text-slate-700">{b.scheduled_date || 'Not scheduled'}</span></p>
+                    <p>Time: <span className="font-medium text-slate-700">{b.scheduled_time || 'Not set'}</span></p>
+                    {providerMeta[b.provider_id]?.phone && (
+                      <p>Phone: <span className="font-medium text-slate-700">{providerMeta[b.provider_id].phone}</span></p>
+                    )}
                   </div>
                 </div>
-              )}
-              {!provider && providerStatus === 'success' && (
-                <div className="text-sm text-slate-600">{t('noProviderProfile')}</div>
-              )}
-            </CardContent>
-          </Card>
+              ))}
+              {bookingStatus === 'success' && recentBookings.length === 0 && <p className="text-sm text-slate-500">No recent bookings yet.</p>}
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="px-4 mt-8">
+        <div className="max-w-6xl mx-auto rounded-2xl bg-white border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="display-type text-2xl font-bold text-slate-900">Need all providers?</h3>
+            <p className="text-slate-600 mt-1">Explore full list and pick exactly what you want.</p>
+          </div>
+          <Button onClick={() => navigate('/providers')} className="bg-cyan-600 hover:bg-cyan-700 text-white">
+            Explore All Providers <Star className="w-4 h-4 ml-1" />
+          </Button>
+        </div>
+      </section>
     </div>
   );
 };
