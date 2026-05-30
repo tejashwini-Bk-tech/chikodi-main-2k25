@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, File, UploadFile, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
@@ -620,6 +620,11 @@ async def list_providers():
     res = supabase.table("providers").select("*").limit(1000).execute()
     rows = getattr(res, 'data', []) or []
     return [Provider(**provider) for provider in rows]
+
+# Favicon endpoint to suppress 404 errors
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 # Include the router in the main app
 app.include_router(api_router)

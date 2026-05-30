@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -113,6 +114,11 @@ async def get_metrics_overview():
         "users": [12, 19, 7, 14, 20, 25, 22],
         "providers": [5, 9, 11, 8, 12, 15, 17]
     }
+
+# Favicon endpoint to suppress 404 errors
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 # Include the router in the main app
 app.include_router(api_router)

@@ -15,12 +15,14 @@ const Signup = () => {
   const [role, setRole] = useState(new URLSearchParams(location.search).get('role') === 'provider' ? 'provider' : 'user');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const nameRegex = /^[A-Za-z\s]+$/;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       if (!formData.fullName || !formData.email || !formData.password) return toast.error('Please fill all fields');
+      if (!nameRegex.test(formData.fullName.trim())) return toast.error('Full name must contain letters only');
       if (formData.password.length < 6) return toast.error('Password must be at least 6 characters');
 
       const { data, error } = await supabase.auth.signUp({
@@ -75,7 +77,15 @@ const Signup = () => {
                   <Label htmlFor="fullName">Full Name</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input id="fullName" className="pl-9" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} required />
+                    <Input
+                      id="fullName"
+                      className="pl-9"
+                      value={formData.fullName}
+                      onChange={(e) => setFormData({ ...formData, fullName: e.target.value.replace(/[^A-Za-z\s]/g, '') })}
+                      pattern="[A-Za-z\s]+"
+                      title="Full name must contain letters only"
+                      required
+                    />
                   </div>
                 </div>
 

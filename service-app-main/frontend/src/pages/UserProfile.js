@@ -12,6 +12,7 @@ import { Separator } from '../components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
+import Messages from '../components/Messages';
 
 const UserProfile = () => {
   const { t } = useLanguage();
@@ -31,20 +32,21 @@ const UserProfile = () => {
   const [notifications, setNotifications] = useState([]);
   const [userLocationName, setUserLocationName] = useState('Not Set');
   const [locationLoading, setLocationLoading] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         console.log('=== DEBUG: Starting user data fetch ===');
-        
+
         // Get current user
         const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
         console.log('=== DEBUG: Auth user result ===');
         console.log('Auth Error:', authError);
         console.log('Auth User:', authUser);
-        
+
         if (authError) throw authError;
-        
+
         if (!authUser) {
           console.log('=== DEBUG: No auth user, redirecting to login ===');
           navigate('/login');
@@ -57,7 +59,7 @@ const UserProfile = () => {
           .select('*')
           .eq('id', authUser.id)
           .single();
-        
+
         console.log('=== DEBUG: Profile query result ===');
         console.log('Profile Error:', profileError);
         console.log('Profile Data:', profile);
@@ -79,10 +81,10 @@ const UserProfile = () => {
 
         // Fetch user statistics
         await fetchUserStats(authUser.id);
-        
+
         // Fetch recent activity
         await fetchRecentActivity(authUser.id);
-        
+
         // Fetch user location name
         await fetchUserLocationName();
 
@@ -90,8 +92,8 @@ const UserProfile = () => {
         console.error('=== DEBUG: Error in fetchUserData ===');
         console.error('Error details:', error);
         console.error('Error stack:', error.stack);
-        toast.error('Failed to load profile', { 
-          description: 'Please try refreshing the page' 
+        toast.error('Failed to load profile', {
+          description: 'Please try refreshing the page'
         });
       }
     };
@@ -103,7 +105,7 @@ const UserProfile = () => {
     try {
       console.log('=== DEBUG: Fetching user stats ===');
       console.log('User ID:', userId);
-      
+
       // Fetch bookings data
       const { data: bookings, error: bookingsError } = await supabase
         .from('bookings')
@@ -136,7 +138,7 @@ const UserProfile = () => {
         setStats(newStats);
       } else {
         console.log('=== DEBUG: No bookings found, using demo data ===');
-        
+
         // Use demo data for better user experience
         const demoStats = {
           totalBookings: 3,
@@ -144,17 +146,17 @@ const UserProfile = () => {
           pendingBookings: 1,
           totalSpent: 175
         };
-        
+
         console.log('=== DEBUG: Using demo stats ===');
         console.log('Demo Stats:', demoStats);
-        
+
         setStats(demoStats);
       }
     } catch (error) {
       console.error('=== DEBUG: Error in fetchUserStats ===');
       console.error('Error details:', error);
       console.error('Error stack:', error.stack);
-      
+
       // Use demo data as fallback
       const fallbackStats = {
         totalBookings: 3,
@@ -174,22 +176,21 @@ const UserProfile = () => {
       let activityError = null;
 
       // Prefer requested_at when available, fallback to created_at for schema compatibility.
+      // Fetch ALL bookings (not just completed) to show real-time updates
       ({ data: activity, error: activityError } = await supabase
         .from('bookings')
         .select('created_at, requested_at, status, amount, service_type, provider_id, scheduled_date, scheduled_time')
         .eq('user_id', userId)
-        .eq('status', 'completed')
         .order('requested_at', { ascending: false })
-        .limit(5));
+        .limit(10));
 
       if (activityError) {
         ({ data: activity, error: activityError } = await supabase
           .from('bookings')
           .select('created_at, status, amount, service_type, provider_id, scheduled_date, scheduled_time')
           .eq('user_id', userId)
-          .eq('status', 'completed')
           .order('created_at', { ascending: false })
-          .limit(5));
+          .limit(10));
       }
 
       console.log('=== DEBUG: Activity query result ===');
@@ -235,7 +236,7 @@ const UserProfile = () => {
       console.error('=== DEBUG: Error in fetchRecentActivity ===');
       console.error('Error details:', error);
       console.error('Error stack:', error.stack);
-      
+
       setRecentActivity([]);
       setProviderMeta({});
     }
@@ -245,21 +246,21 @@ const UserProfile = () => {
     try {
       setLocationLoading(true);
       const savedLocation = localStorage.getItem('userLocation');
-      
+
       if (savedLocation) {
         const location = JSON.parse(savedLocation);
-        
+
         // Use reverse geocoding to get location name
         const response = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=10&addressdetails=1`
         );
-        
+
         if (response.ok) {
           const data = await response.json();
           const address = data.address;
-          
+
           let locationName = 'Unknown Location';
-          
+
           if (address.city || address.town || address.village) {
             locationName = `${address.city || address.town || address.village}`;
             if (address.state) locationName += `, ${address.state}`;
@@ -269,7 +270,7 @@ const UserProfile = () => {
           } else if (address.country) {
             locationName = address.country;
           }
-          
+
           setUserLocationName(locationName);
         } else {
           setUserLocationName('Location Unavailable');
@@ -288,40 +289,44 @@ const UserProfile = () => {
   // Real-time updates for bookings
   useEffect(() => {
     if (!user?.id) return;
-    
+
     const bookingsChannel = supabase
       .channel('user-bookings-updates')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'bookings',
         filter: `user_id=eq.${user.id}`
       }, async (payload) => {
         console.log('Booking update received:', payload);
-        
+
         // Refresh user stats
         await fetchUserStats(user.id);
-        
+
         // Refresh recent activity
         await fetchRecentActivity(user.id);
-        
+
         // Show notification for booking updates
         if (payload.eventType === 'INSERT') {
-          toast.success('New booking created!', { 
-            description: `Your ${payload.new.service_type || 'service'} booking has been created.` 
+          toast.success('New booking created!', {
+            description: `Your ${payload.new.service_type || 'service'} booking has been created.`
           });
         } else if (payload.eventType === 'UPDATE') {
           const oldStatus = payload.old?.status;
           const newStatus = payload.new?.status;
-          
+
           if (oldStatus !== newStatus) {
             if (newStatus === 'completed') {
-              toast.success('Booking completed!', { 
-                description: `Your ${payload.new.service_type || 'service'} has been completed.` 
+              toast.success('Booking completed!', {
+                description: `Your ${payload.new.service_type || 'service'} has been completed.`
               });
             } else if (newStatus === 'confirmed') {
-              toast.success('Booking confirmed!', { 
-                description: `Your ${payload.new.service_type || 'service'} has been confirmed.` 
+              toast.success('Booking confirmed!', {
+                description: `Your ${payload.new.service_type || 'service'} has been confirmed.`
+              });
+            } else if (newStatus === 'in_progress') {
+              toast.info('Booking in progress!', {
+                description: `Your ${payload.new.service_type || 'service'} is now in progress.`
               });
             }
           }
@@ -330,7 +335,7 @@ const UserProfile = () => {
       .subscribe((status) => {
         console.log('Bookings realtime status:', status);
       });
-    
+
     return () => {
       supabase.removeChannel(bookingsChannel);
     };
@@ -338,7 +343,7 @@ const UserProfile = () => {
 
   const handleSaveProfile = async () => {
     if (!user) return;
-    
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -599,12 +604,12 @@ const UserProfile = () => {
                           )}
                         </div>
                         <div className="text-right">
-                          <Badge 
+                          <Badge
                             variant={
                               activity.status === 'completed' ? 'default' :
-                              activity.status === 'confirmed' ? 'secondary' :
-                              activity.status === 'requested' ? 'outline' :
-                              'outline'
+                                activity.status === 'confirmed' ? 'secondary' :
+                                  activity.status === 'requested' ? 'outline' :
+                                    'outline'
                             }
                           >
                             {activity.status}
@@ -614,6 +619,17 @@ const UserProfile = () => {
                               ${activity.amount}
                             </div>
                           )}
+                          {(activity.status === 'pending' || activity.status === 'confirmed' || activity.status === 'requested' || activity.status === 'in_progress') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedBooking(activity)}
+                              className="mt-2"
+                            >
+                              <MessageSquare className="w-4 h-4 mr-1" />
+                              Message
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -621,6 +637,25 @@ const UserProfile = () => {
                 )}
               </CardContent>
             </Card>
+
+            {/* Messages Dialog */}
+            {selectedBooking && (
+              <Dialog open={!!selectedBooking} onOpenChange={() => setSelectedBooking(null)}>
+                <DialogContent className="max-w-2xl h-[600px] p-0">
+                  <DialogHeader className="p-6 pb-0">
+                    <DialogTitle>Message {providerMeta[selectedBooking.provider_id]?.name || 'Provider'}</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex-1 overflow-hidden px-6">
+                    <Messages
+                      providerId={selectedBooking.provider_id}
+                      providerName={providerMeta[selectedBooking.provider_id]?.name}
+                      currentUserId={user?.id}
+                      bookingId={selectedBooking.id}
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </div>
       </div>

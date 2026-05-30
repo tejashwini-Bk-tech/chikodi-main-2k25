@@ -12,6 +12,7 @@ import Home from './components/Home';
 import Privacy from './components/Privacy';
 import Login from './components/Login';
 import AdminPage from './pages/AdminPage';
+import AdminDashboard from './pages/AdminDashboard';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { supabase } from './lib/supabaseClient';
 
