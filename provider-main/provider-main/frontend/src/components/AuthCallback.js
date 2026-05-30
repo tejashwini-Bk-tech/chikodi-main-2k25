@@ -13,6 +13,7 @@ export default function AuthCallback() {
     (async () => {
       try {
         const url = new URL(window.location.href);
+        const signupRole = url.searchParams.get('signup_role');
         const hasCode = url.searchParams.get('code');
         const hasHashToken = window.location.hash.includes('access_token');
         if (hasCode) {
@@ -45,6 +46,15 @@ export default function AuthCallback() {
               body: JSON.stringify({ email: user.email }),
             });
           } catch (e) {}
+
+          const userRole = signupRole || user?.user_metadata?.role;
+          if (userRole && userRole !== 'provider') {
+            const userAppUrl = process.env.REACT_APP_USER_URL?.replace(/\/$/, '');
+            if (userAppUrl) {
+              window.location.href = `${userAppUrl}/dashboard`;
+              return;
+            }
+          }
 
           // If a provider row already exists for this user, go to dashboard; else go to registration
           try {

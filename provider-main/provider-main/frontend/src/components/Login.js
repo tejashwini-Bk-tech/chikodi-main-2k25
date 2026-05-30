@@ -72,13 +72,32 @@ const Login = ({ redirectTo, embedded = false, title = 'Provider Login' }) => {
     if (!e || !p) { toast.error('Enter email and password'); return; }
     setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}/auth/callback`;
-      const { data, error } = await supabase.auth.signUp({ email: e, password: p, options: { emailRedirectTo: redirectTo } });
+      const redirectTo = `${window.location.origin}/auth/callback?signup_role=provider`;
+      const { data, error } = await supabase.auth.signUp({
+        email: e,
+        password: p,
+        options: {
+          data: { role: 'provider' },
+          emailRedirectTo: redirectTo,
+        },
+      });
       if (error) throw error;
 
-      // After signup, navigate to registration step 1
-      // User will complete provider registration form
-      toast.success('Account created! Let\'s complete your provider profile.');
+      const user = data?.user || data?.session?.user || null;
+      if (user?.id) {
+        const { data: prov, error: provErr } = await supabase
+          .from('providers')
+          .select('provider_id, user_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!provErr && prov?.provider_id) {
+          toast.success('Account ready! Opening your dashboard.');
+          navigate(`/dashboard/${prov.provider_id}`, { replace: true });
+          return;
+        }
+      }
+
+      toast.success('Account created! Complete your provider profile to open your dashboard.');
       navigate('/register/step/1', { replace: true });
     } catch (err) {
       toast.error(err?.message || 'Sign up failed');

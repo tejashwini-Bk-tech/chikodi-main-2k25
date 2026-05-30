@@ -35,6 +35,7 @@ const AuthCallback = () => {
         // Capture query params BEFORE cleaning the URL
         const currentUrl = new URL(window.location.href);
         const incomingType = currentUrl.searchParams.get('type');
+        const signupRole = currentUrl.searchParams.get('signup_role');
 
         // STEP 3 — Get final session
         const { data: sessionData, error: sessionError } =
@@ -62,6 +63,27 @@ const AuthCallback = () => {
           if (!hasSession) {
             toast({ title: 'Email verified', description: 'You can now log in.', variant: 'default' });
             navigate('/login', { replace: true });
+            return;
+          }
+
+          const userRole = signupRole || session.user?.user_metadata?.role;
+          const providerUrl = process.env.REACT_APP_PROVIDER_URL?.replace(/\/$/, '') || '';
+
+          if (userRole === 'provider' && providerUrl) {
+            localStorage.setItem('user', JSON.stringify({ id: session.user.id, email: session.user.email, fullName: session.user?.user_metadata?.full_name }));
+            localStorage.setItem('role', 'provider');
+            localStorage.setItem('isVerified', 'true');
+            toast({ title: 'Email verified', description: 'Opening provider dashboard.', variant: 'default' });
+            window.location.href = `${providerUrl}/auth/callback?signup_role=provider`;
+            return;
+          }
+
+          if (userRole === 'user') {
+            localStorage.setItem('user', JSON.stringify({ id: session.user.id, email: session.user.email, fullName: session.user?.user_metadata?.full_name }));
+            localStorage.setItem('role', 'user');
+            localStorage.setItem('isVerified', 'true');
+            toast({ title: 'Email verified', description: 'Welcome!', variant: 'default' });
+            navigate('/dashboard', { replace: true });
             return;
           }
 

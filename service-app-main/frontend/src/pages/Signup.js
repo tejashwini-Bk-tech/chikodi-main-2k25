@@ -25,10 +25,18 @@ const Signup = () => {
       if (!nameRegex.test(formData.fullName.trim())) return toast.error('Full name must contain letters only');
       if (formData.password.length < 6) return toast.error('Password must be at least 6 characters');
 
+      const providerUrl = process.env.REACT_APP_PROVIDER_URL?.replace(/\/$/, '');
+      const emailRedirectTo = role === 'provider' && providerUrl
+        ? `${providerUrl}/auth/callback?signup_role=provider`
+        : `${window.location.origin}/auth/callback?signup_role=user`;
+
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
-        options: { data: { full_name: formData.fullName, role } },
+        options: {
+          data: { full_name: formData.fullName, role },
+          emailRedirectTo,
+        },
       });
 
       if (error) return toast.error('Signup failed', { description: error.message });
@@ -43,8 +51,8 @@ const Signup = () => {
         });
       }
 
-      toast.success('Account created. Verify your email, then log in.');
-      navigate('/login');
+      toast.success('Account created. Verify your email to continue.');
+      navigate(role === 'provider' && providerUrl ? '/' : '/login');
     } catch {
       toast.error('Signup failed', { description: 'Unexpected error occurred' });
     } finally {
